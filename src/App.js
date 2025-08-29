@@ -5,11 +5,13 @@ const BBQMaster = () => {
   const [gameState, setGameState] = useState('entry');
   const [playerName, setPlayerName] = useState('');
   const [playerEmail, setPlayerEmail] = useState('');
-  const [avatar, setAvatar] = useState('chef_medium');
   const [selectedMeat, setSelectedMeat] = useState(null);
   const [smokerType, setSmokerType] = useState(null);
   const [region, setRegion] = useState('texas');
   const [weather, setWeather] = useState('sunny');
+  const [expertTipsEnabled, setExpertTipsEnabled] = useState(false);
+  const [currentTip, setCurrentTip] = useState(null);
+  const [tipTimer, setTipTimer] = useState(0);
   
   // Cooking state
   const [temperature, setTemperature] = useState(225);
@@ -60,16 +62,6 @@ const BBQMaster = () => {
   const [scores, setScores] = useState({ tastiness: 0, tenderness: 0, fatRendering: 0, bark: 0, smokeRing: 0 });
   const [achievements, setAchievements] = useState([]);
 
-  // Game data
-  const avatars = {
-    chef_light: { name: 'Pit Master', emoji: '👨🏻‍🍳' },
-    chef_medium: { name: 'Pit Master', emoji: '👨🏽‍🍳' },
-    chef_dark: { name: 'Pit Master', emoji: '👨🏿‍🍳' },
-    cook_light: { name: 'Pit Master', emoji: '👩🏻‍🍳' },
-    cook_medium: { name: 'Pit Master', emoji: '👩🏽‍🍳' },
-    cook_dark: { name: 'Pit Master', emoji: '👩🏿‍🍳' }
-  };
-
   const regions = {
     texas: { name: 'Texas', style: 'Salt & pepper brisket', bonus: 'bark' },
     kansas: { name: 'Kansas City', style: 'Sweet saucy ribs', bonus: 'sauce' },
@@ -84,6 +76,68 @@ const BBQMaster = () => {
     'pork-shoulder': { name: 'Pork Shoulder', emoji: '🐷', difficulty: 'intermediate', idealTemp: 225, idealTime: 14, wrapTemp: 165, finishTemp: 205, price: 90 },
     'beef-ribs': { name: 'Beef Ribs', emoji: '🦴', difficulty: 'expert', idealTemp: 275, idealTime: 10, wrapTemp: 170, finishTemp: 210, price: 200 },
     salmon: { name: 'Salmon', emoji: '🐟', difficulty: 'advanced', idealTemp: 200, idealTime: 2, wrapTemp: 140, finishTemp: 145, price: 40 }
+  };
+
+  // Expert BBQ tips based on real techniques
+  const getExpertTip = () => {
+    const meat = selectedMeat ? meatData[selectedMeat] : null;
+    if (!meat || !expertTipsEnabled) return null;
+
+    // Temperature-based tips
+    if (temperature > meat.idealTemp + 25) {
+      return "🌡️ Aaron Franklin: 'Your temp is running hot - close your intake damper about 25% to bring it down.'";
+    }
+    if (temperature < meat.idealTemp - 15) {
+      return "🔥 Franklin Barbecue: 'Temperature's low - open your intake vent and add more fuel to the firebox.'";
+    }
+
+    // Stall management
+    if (isStalled && !hasWrapped) {
+      return "📄 Myron Mixon: 'You hit the stall! Time for the Texas Crutch - wrap in foil or butcher paper to power through.'";
+    }
+
+    // Timing-based tips
+    if (cookTime > 2 && !hasSpritized && selectedMeat === 'brisket') {
+      return "💦 Competition tip: 'Start spritzing your brisket every hour after the first 2 hours to keep it moist.'";
+    }
+    
+    if (cookTime > 1 && woodChipsAdded < 3) {
+      return "🪵 Pitmaster wisdom: 'Add more wood chips in the first 4 hours - meat stops taking smoke after 140°F.'";
+    }
+
+    // Meat-specific tips
+    if (selectedMeat === 'ribs' && internalTemp > 180 && !hasWrapped) {
+      return "🍖 BBQ Pro tip: 'Your ribs are getting close - do the bend test or toothpick test to check tenderness.'";
+    }
+
+    if (selectedMeat === 'brisket' && internalTemp > 195 && !hasReverseSeared) {
+      return "🔥 Franklin method: 'Consider a reverse sear at 400°F for the last 10 degrees to firm up that bark.'";
+    }
+
+    // General technique tips
+    if (moistureLevel < 40) {
+      return "💧 Moisture tip: 'Your meat is drying out - add a water pan or increase your spritzing frequency.'";
+    }
+
+    if (barkDevelopment < 30 && cookTime > 3) {
+      return "🍞 Bark building: 'Bark forms better without spritzing early on - hold off on moisture until hour 3-4.'";
+    }
+
+    // Weather-specific advice
+    if (weather === 'windy' && fuelLevel < 60) {
+      return "💨 Wind management: 'Windy weather burns more fuel - close your exhaust vent slightly to maintain efficiency.'";
+    }
+
+    if (weather === 'rainy' && !waterPanActive) {
+      return "🌧️ Rain day tip: 'High humidity day - you might not need a water pan. Natural moisture in the air helps.'";
+    }
+
+    // Advanced tips
+    if (collagenBreakdown > 70 && !hasWrapped) {
+      return "🧬 Science tip: 'Collagen is breaking down nicely - you could go naked (no wrap) for maximum bark if you're feeling confident.'";
+    }
+
+    return null;
   };
 
   const smokerTypes = {
@@ -148,6 +202,22 @@ const BBQMaster = () => {
           setSocialMedia(prev => ({...prev, followers: prev.followers + Math.floor(Math.random() * 5) + 1}));
         }
         
+        // Expert tips system
+        if (expertTipsEnabled && Math.random() < 0.01 && !currentTip) {
+          const tip = getExpertTip();
+          if (tip) {
+            setCurrentTip(tip);
+            setTipTimer(12); // Show tip for 12 seconds
+          }
+        }
+        
+        // Tip timer countdown
+        if (tipTimer > 0) {
+          setTipTimer(prev => prev - 1);
+        } else if (currentTip) {
+          setCurrentTip(null);
+        }
+        
         // Time progression
         if (cookTime > 4 && timeOfDay === 'morning') setTimeOfDay('afternoon');
         else if (cookTime > 8 && timeOfDay === 'afternoon') setTimeOfDay('evening');
@@ -155,7 +225,7 @@ const BBQMaster = () => {
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [gameState, weather, baseTemperature, intakeVent, exhaustVent, firebox, hasWrapped, isStalled, selectedMeat, temperature, internalTemp, hasSpritized, waterPanActive, cookTime, timeOfDay, livestreamActive]);
+  }, [gameState, weather, baseTemperature, intakeVent, exhaustVent, firebox, hasWrapped, isStalled, selectedMeat, temperature, internalTemp, hasSpritized, waterPanActive, cookTime, timeOfDay, livestreamActive, expertTipsEnabled, currentTip, tipTimer]);
 
   // Enhanced techniques
   const sprayMeat = (type = spritzeType) => {
@@ -336,6 +406,16 @@ const BBQMaster = () => {
           {barkDevelopment > 90 && <p className="text-amber-400">✨ Perfect bark developing!</p>}
           {criticsPresent && <p className="text-yellow-400">👨‍💼 Food critic present</p>}
           {livestreamActive && <p className="text-purple-400">📡 Streaming live to {socialMedia.followers} fans</p>}
+          
+          {/* Expert tip display */}
+          {currentTip && (
+            <div className="bg-blue-900 bg-opacity-80 rounded-lg p-3 border-l-4 border-blue-400">
+              <div className="flex justify-between items-start">
+                <p className="text-blue-200 text-sm">{currentTip}</p>
+                <span className="text-blue-400 text-xs ml-2">{tipTimer}s</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -370,31 +450,20 @@ const BBQMaster = () => {
                 </select>
               </div>
 
-              <button onClick={() => playerName && playerEmail && setGameState('avatar')}
+              <div className="flex items-center space-x-2">
+                <input type="checkbox" id="expertTips" checked={expertTipsEnabled} 
+                       onChange={(e) => setExpertTipsEnabled(e.target.checked)}
+                       className="w-4 h-4" />
+                <label htmlFor="expertTips" className="text-sm">
+                  💡 Enable Expert BBQ Tips (Aaron Franklin, Myron Mixon, etc.)
+                </label>
+              </div>
+
+              <button onClick={() => playerName && playerEmail && setGameState('setup')}
                       className="w-full py-3 rounded-lg text-xl font-bold bg-red-600 hover:bg-red-700">
                 🚀 Start Your BBQ Journey!
               </button>
             </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Avatar selection
-  if (gameState === 'avatar') {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-purple-100 to-blue-100 p-6">
-        <div className="max-w-4xl mx-auto text-center">
-          <h1 className="text-4xl font-bold text-gray-800 mb-8">Choose Your Pit Master</h1>
-          <div className="grid grid-cols-3 gap-4">
-            {Object.entries(avatars).map(([key, char]) => (
-              <div key={key} onClick={() => { setAvatar(key); setGameState('setup'); }}
-                   className="bg-white rounded-xl p-6 shadow-xl hover:scale-105 transition-all cursor-pointer">
-                <div className="text-6xl mb-3">{char.emoji}</div>
-                <h3 className="text-lg font-bold">{char.name}</h3>
-              </div>
-            ))}
           </div>
         </div>
       </div>
@@ -407,7 +476,7 @@ const BBQMaster = () => {
       <div className="min-h-screen bg-gradient-to-b from-orange-100 to-red-100 p-6">
         <div className="max-w-6xl mx-auto">
           <h1 className="text-3xl font-bold text-center text-red-900 mb-6">
-            {avatars[avatar].emoji} {playerName} - {regions[region].name} Style Setup
+            🔥 {playerName} - {regions[region].name} Style Setup
           </h1>
 
           {/* Equipment selection */}
