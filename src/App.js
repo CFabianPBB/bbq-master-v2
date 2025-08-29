@@ -6,7 +6,7 @@ const BBQMaster = () => {
   const [gameState, setGameState] = useState('entry');
   const [playerName, setPlayerName] = useState('');
   const [playerEmail, setPlayerEmail] = useState('');
-  const [avatar, setAvatar] = useState('chef');
+  const [avatar, setAvatar] = useState('chef_medium');
   const [selectedMeat, setSelectedMeat] = useState(null);
   const [smokerType, setSmokerType] = useState(null);
   const [woodType, setWoodType] = useState(null);
@@ -16,6 +16,7 @@ const BBQMaster = () => {
   
   // Cooking state
   const [temperature, setTemperature] = useState(225);
+  const [baseTemperature, setBaseTemperature] = useState(225);
   const [cookTime, setCookTime] = useState(0);
   const [internalTemp, setInternalTemp] = useState(40);
   const [isStalled, setIsStalled] = useState(false);
@@ -55,6 +56,13 @@ const BBQMaster = () => {
   const [totalScore, setTotalScore] = useState(0);
   const [achievements, setAchievements] = useState([]);
   
+  // Live competition state
+  const [liveCompetitors, setLiveCompetitors] = useState([
+    { name: "SmokeKing_Mike", score: 85, progress: 67, meat: "brisket" },
+    { name: "RibQueen_Lisa", score: 78, progress: 45, meat: "ribs" },
+    { name: "BBQ_Master_Sam", score: 91, progress: 82, meat: "burnt-ends" }
+  ]);
+  
   // Leaderboard
   const [leaderboard, setLeaderboard] = useState([
     { name: "Franklin_Fan", email: "aaron@bbq.com", score: 2847, rank: 1 },
@@ -66,8 +74,12 @@ const BBQMaster = () => {
 
   // Game data
   const avatars = {
-    chef: { name: 'Pit Master', emoji: '👨‍🍳', pronouns: 'he/him' },
-    cook: { name: 'Pit Master', emoji: '👩‍🍳', pronouns: 'she/her' }
+    chef_light: { name: 'Pit Master', emoji: '👨🏻‍🍳' },
+    chef_medium: { name: 'Pit Master', emoji: '👨🏽‍🍳' },
+    chef_dark: { name: 'Pit Master', emoji: '👨🏿‍🍳' },
+    cook_light: { name: 'Pit Master', emoji: '👩🏻‍🍳' },
+    cook_medium: { name: 'Pit Master', emoji: '👩🏽‍🍳' },
+    cook_dark: { name: 'Pit Master', emoji: '👩🏿‍🍳' }
   };
 
   const difficultyLevels = {
@@ -147,6 +159,18 @@ const BBQMaster = () => {
         
         setCookTime(prev => prev + (1/60 * weatherMod * smokerMod / diffMod));
         
+        // Weather-based temperature fluctuations
+        setTemperature(prev => {
+          const weatherEffect = weather === 'hot' ? Math.random() * 15 - 5 : 
+                              weather === 'windy' ? Math.random() * 25 - 12 :
+                              weather === 'snowy' ? Math.random() * -20 :
+                              weather === 'rainy' ? Math.random() * 8 - 4 :
+                              Math.random() * 6 - 3;
+          
+          const newTemp = baseTemperature + weatherEffect;
+          return Math.max(180, Math.min(400, newTemp));
+        });
+        
         // Internal temperature with stall simulation
         setInternalTemp(prev => {
           const targetProgress = cookTime / meatData[selectedMeat].idealTime;
@@ -170,7 +194,7 @@ const BBQMaster = () => {
         
         // Fuel consumption
         setFuelLevel(prev => {
-          const consumption = weatherData[weather].fuelMod * (temperature / 225) * 0.1;
+          const consumption = weatherData[weather].fuelMod * (baseTemperature / 225) * 0.1;
           return Math.max(0, prev - consumption);
         });
         
@@ -203,6 +227,13 @@ const BBQMaster = () => {
           return prev;
         });
         
+        // Update live competitors
+        setLiveCompetitors(prev => prev.map(comp => ({
+          ...comp,
+          score: Math.min(100, comp.score + Math.random() * 0.5 - 0.25),
+          progress: Math.min(100, comp.progress + Math.random() * 0.8)
+        })));
+        
         // Animations
         setActionTimer(prev => {
           if (prev > 0) return prev - 1;
@@ -227,9 +258,9 @@ const BBQMaster = () => {
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [gameState, weather, smokerType, difficulty, cookTime, hasWrapped, isStalled, stallStartTime, lastProbeCheck, actionTimer, selectedMeat, temperature, internalTemp, hasSpritized]);
+  }, [gameState, weather, smokerType, difficulty, cookTime, hasWrapped, isStalled, stallStartTime, lastProbeCheck, actionTimer, selectedMeat, baseTemperature, internalTemp, hasSpritized]);
 
-  // Scoring system
+  // Scoring system - made more challenging
   const calculateAdvancedScores = () => {
     if (!selectedMeat || !smokerType || !woodType) return;
     
@@ -240,41 +271,41 @@ const BBQMaster = () => {
     const diff = difficultyLevels[difficulty];
     
     const tempDiff = Math.abs(temperature - meat.idealTemp);
-    const tempPrecision = Math.max(0, 100 - (tempDiff * 2));
+    const tempPrecision = Math.max(0, 100 - (tempDiff * 4)); // Made more strict
     
     const timeDiff = Math.abs(cookTime - meat.idealTime);
-    const timingScore = Math.max(0, 100 - (timeDiff * 6));
+    const timingScore = Math.max(0, 100 - (timeDiff * 10)); // Made more strict
     
     let techniqueBonus = 0;
-    if (hasSpritized && spritzeCount >= 2) techniqueBonus += 25;
-    if (hasWrapped && cookTime > 0.1) techniqueBonus += 30;
-    if (woodChipsAdded >= 3) techniqueBonus += 20;
-    if (hasSauced && cookTime > 0.8) techniqueBonus += 15;
-    if (restTime >= 0.03) techniqueBonus += 20;
-    if (airflowSetting >= 40 && airflowSetting <= 60) techniqueBonus += 10;
+    if (hasSpritized && spritzeCount >= 3) techniqueBonus += 15; // Stricter requirements
+    if (hasWrapped && cookTime > 0.15) techniqueBonus += 20; // Stricter timing
+    if (woodChipsAdded >= 4) techniqueBonus += 12; // Need more wood
+    if (hasSauced && cookTime > 0.85) techniqueBonus += 10; // Later sauce timing
+    if (restTime >= 0.05) techniqueBonus += 15; // Longer rest required
+    if (airflowSetting >= 45 && airflowSetting <= 55) techniqueBonus += 8; // Narrower sweet spot
     
-    const woodPairing = wood.pairings.includes(selectedMeat) ? 25 : -10;
-    const weatherMastery = weather === 'sunny' ? 5 : weather === 'snowy' ? 25 : 15;
-    const fuelMgmt = fuelLevel > 20 ? 15 : fuelLevel > 0 ? 5 : -20;
+    const woodPairing = wood.pairings.includes(selectedMeat) ? 20 : -15; // Bigger penalty
+    const weatherMastery = weather === 'sunny' ? 3 : weather === 'snowy' ? 20 : 10;
+    const fuelMgmt = fuelLevel > 30 ? 10 : fuelLevel > 10 ? 3 : -25; // Stricter fuel management
     
     const tastiness = Math.min(100, Math.round(
-      (tempPrecision * 0.3 + woodPairing + techniqueBonus * 0.4 + rub.flavorBonus) * smoker.smokeIntensity * diff.multiplier
+      (tempPrecision * 0.4 + woodPairing + techniqueBonus * 0.3 + rub.flavorBonus * 0.8) * smoker.smokeIntensity * diff.multiplier
     ));
     
     const tenderness = Math.min(100, Math.round(
-      (timingScore * 0.4 + collagenBreakdown * 0.4 + (hasWrapped ? 30 : 0) + (restTime >= 0.03 ? 25 : 0)) * diff.multiplier
+      (timingScore * 0.5 + collagenBreakdown * 0.3 + (hasWrapped ? 25 : -5) + (restTime >= 0.05 ? 20 : -10)) * diff.multiplier
     ));
     
     const fatRendering = Math.min(100, Math.round(
-      (tempPrecision * 0.5 + (temperature >= 225 ? 25 : 0) + timingScore * 0.3 + collagenBreakdown * 0.2) * diff.multiplier
+      (tempPrecision * 0.6 + (temperature >= 225 && temperature <= 275 ? 20 : -10) + timingScore * 0.25 + collagenBreakdown * 0.15) * diff.multiplier
     ));
     
     const bark = Math.min(100, Math.round(
-      (barkDevelopment * 0.6 + rub.barkBonus + (hasSpritized ? 10 : 20) + (hasWrapped ? -15 : 20)) * diff.multiplier
+      (barkDevelopment * 0.5 + rub.barkBonus * 0.6 + (hasSpritized ? 5 : 15) + (hasWrapped ? -20 : 15)) * diff.multiplier
     ));
     
     const smokeRing = Math.min(100, Math.round(
-      (smokeRingDepth * 0.7 + (temperature <= 250 ? 30 : 0) + (moistureLevel >= 60 ? 15 : 0)) * diff.multiplier
+      (smokeRingDepth * 0.6 + (temperature <= 250 ? 25 : -15) + (moistureLevel >= 65 ? 10 : -10)) * diff.multiplier
     ));
     
     setScores({ tastiness, tenderness, fatRendering, bark, smokeRing });
@@ -392,6 +423,89 @@ const BBQMaster = () => {
     );
   };
 
+  // Smoker animation component
+  const getSmokerVisualization = () => {
+    const meat = meatData[selectedMeat];
+    const smokeIntensity = Math.min(3, woodChipsAdded);
+    const barkColor = barkDevelopment > 80 ? '#8B4513' : barkDevelopment > 50 ? '#A0522D' : barkDevelopment > 20 ? '#D2691E' : '#DEB887';
+    
+    return (
+      <div className="bg-gray-800 rounded-lg p-4 relative overflow-hidden">
+        <h3 className="font-semibold mb-3 text-center">🔥 Inside the Smoker</h3>
+        
+        {/* Smoker chamber */}
+        <div className="relative bg-gray-900 rounded-lg h-40 border-4 border-gray-700">
+          {/* Smoke effects */}
+          {Array.from({length: smokeIntensity}, (_, i) => (
+            <div
+              key={i}
+              className="absolute animate-pulse opacity-60"
+              style={{
+                left: `${20 + i * 25}%`,
+                top: `${10 + Math.sin(cookTime + i) * 20}%`,
+                fontSize: '20px'
+              }}
+            >
+              💨
+            </div>
+          ))}
+          
+          {/* Temperature visualization */}
+          <div className="absolute top-2 left-2 text-xs text-red-400">
+            {temperature.toFixed(0)}°F
+          </div>
+          
+          {/* Meat visualization */}
+          <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
+            <div
+              className="transition-all duration-1000 text-4xl"
+              style={{
+                filter: `hue-rotate(${barkDevelopment}deg) brightness(${0.7 + (barkDevelopment / 200)})`
+              }}
+            >
+              {meat.emoji}
+            </div>
+            
+            {/* Bark development visual */}
+            <div className="mt-1">
+              <div className="text-xs text-center text-gray-400">Bark: {barkDevelopment.toFixed(0)}%</div>
+              <div 
+                className="h-1 rounded transition-all duration-1000"
+                style={{
+                  backgroundColor: barkColor,
+                  width: `${Math.max(20, barkDevelopment)}%`,
+                  margin: '0 auto'
+                }}
+              ></div>
+            </div>
+          </div>
+          
+          {/* Smoke ring indicator */}
+          {smokeRingDepth > 10 && (
+            <div className="absolute bottom-8 right-4 text-xs">
+              <div className="bg-pink-500 rounded-full w-4 h-4 opacity-60 animate-pulse"></div>
+              <div className="text-pink-300 text-center mt-1">Ring!</div>
+            </div>
+          )}
+          
+          {/* Moisture indicators */}
+          {moistureLevel > 80 && (
+            <div className="absolute top-4 right-4 text-blue-300 animate-bounce">
+              💧
+            </div>
+          )}
+        </div>
+        
+        {/* Status messages */}
+        <div className="mt-2 text-center text-sm">
+          {isStalled && <p className="text-red-400 animate-pulse">⚠️ Temperature stalled!</p>}
+          {hasWrapped && <p className="text-yellow-400">🎯 Texas Crutch engaged</p>}
+          {barkDevelopment > 90 && <p className="text-amber-400">✨ Perfect bark forming!</p>}
+        </div>
+      </div>
+    );
+  };
+
   // Entry screen
   if (gameState === 'entry') {
     return (
@@ -491,11 +605,11 @@ const BBQMaster = () => {
   if (gameState === 'avatar') {
     return (
       <div className="min-h-screen bg-gradient-to-b from-purple-100 to-blue-100 p-6">
-        <div className="max-w-2xl mx-auto text-center">
+        <div className="max-w-4xl mx-auto text-center">
           <h1 className="text-4xl font-bold text-gray-800 mb-4">Welcome {playerName}! 🔥</h1>
           <h2 className="text-2xl font-semibold text-gray-700 mb-8">Choose Your Pit Master Avatar</h2>
           
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-3 gap-4 max-w-3xl mx-auto">
             {Object.entries(avatars).map(([key, char]) => (
               <div
                 key={key}
@@ -503,11 +617,10 @@ const BBQMaster = () => {
                   setAvatar(key);
                   setGameState('setup');
                 }}
-                className="bg-white rounded-xl p-8 shadow-xl hover:shadow-2xl transform hover:scale-105 transition-all duration-300 cursor-pointer"
+                className="bg-white rounded-xl p-6 shadow-xl hover:shadow-2xl transform hover:scale-105 transition-all duration-300 cursor-pointer"
               >
-                <div className="text-8xl mb-4">{char.emoji}</div>
-                <h3 className="text-2xl font-bold text-gray-800">{char.name}</h3>
-                <p className="text-gray-600">{char.pronouns}</p>
+                <div className="text-6xl mb-3">{char.emoji}</div>
+                <h3 className="text-lg font-bold text-gray-800">{char.name}</h3>
               </div>
             ))}
           </div>
@@ -632,6 +745,8 @@ const BBQMaster = () => {
                     setHasSauced(false);
                     setRestTime(0);
                     setCurrentAction('monitoring');
+                    setBaseTemperature(225);
+                    setTemperature(225);
                   }
                 }}
                 className={`bg-white rounded-xl p-4 shadow-xl hover:shadow-2xl transform hover:scale-105 transition-all duration-300 ${
@@ -664,6 +779,7 @@ const BBQMaster = () => {
     const wood = woodTypes[woodType];
     const weatherInfo = weatherData[weather];
     const progress = Math.min(100, (internalTemp - 40) / (meat.finishTemp - 40) * 100);
+    const currentPlayerScore = getOverallScore();
     
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-800 to-gray-900 p-4">
@@ -677,21 +793,25 @@ const BBQMaster = () => {
             </div>
           </div>
 
-          <div className="grid xl:grid-cols-3 gap-4">
+          <div className="grid xl:grid-cols-4 gap-4">
             {/* Controls */}
             <div className="bg-gray-700 rounded-lg p-4">
               <h3 className="font-semibold mb-3">🌡️ Temperature Control</h3>
               <div className="mb-3">
                 <div className="flex justify-between text-sm mb-1">
-                  <span>Smoker: {temperature}°F</span>
+                  <span>Smoker: {temperature.toFixed(0)}°F</span>
                   <span className="text-yellow-300">Target: {meat.idealTemp}°F</span>
+                </div>
+                <div className="flex justify-between text-xs mb-2 text-gray-400">
+                  <span>Setting: {baseTemperature}°F</span>
+                  <span>{weatherInfo.name} effects active</span>
                 </div>
                 <input
                   type="range"
                   min="180"
                   max="400"
-                  value={temperature}
-                  onChange={(e) => setTemperature(Number(e.target.value))}
+                  value={baseTemperature}
+                  onChange={(e) => setBaseTemperature(Number(e.target.value))}
                   className="w-full h-2 bg-gray-600 rounded-lg"
                 />
               </div>
@@ -736,7 +856,7 @@ const BBQMaster = () => {
                     hasWrapped ? 'bg-green-600' : internalTemp >= meat.wrapTemp ? 'bg-purple-600 hover:bg-purple-700' : 'bg-gray-600 cursor-not-allowed'
                   }`}
                 >
-                  {hasWrapped ? '✓ Wrapped!' : `🔄 Foil (${meat.wrapTemp}°F)`}
+                  {hasWrapped ? '✓ Wrapped!' : `📄 Foil (${meat.wrapTemp}°F)`}
                 </button>
                 
                 <button
@@ -782,6 +902,30 @@ const BBQMaster = () => {
               </div>
             </div>
 
+            {/* Live Competition */}
+            <div className="bg-gray-700 rounded-lg p-4">
+              <h3 className="font-semibold mb-3">🏁 Live Competition</h3>
+              <div className="space-y-2">
+                <div className="bg-yellow-600 rounded p-2 text-sm">
+                  <div className="flex justify-between">
+                    <span>{playerName} (You)</span>
+                    <span className="font-bold">{currentPlayerScore}%</span>
+                  </div>
+                  <div className="bg-yellow-400 rounded h-1 mt-1" style={{ width: `${progress}%` }}></div>
+                </div>
+                {liveCompetitors.map((comp, index) => (
+                  <div key={index} className="bg-gray-600 rounded p-2 text-sm">
+                    <div className="flex justify-between">
+                      <span>{comp.name}</span>
+                      <span className="font-bold">{comp.score.toFixed(0)}%</span>
+                    </div>
+                    <div className="bg-blue-400 rounded h-1 mt-1" style={{ width: `${comp.progress}%` }}></div>
+                    <div className="text-xs text-gray-400 mt-1">{meatData[comp.meat].name}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* Stats */}
             <div className="space-y-4">
               <div className="bg-gray-700 rounded-lg p-4">
@@ -823,6 +967,11 @@ const BBQMaster = () => {
                 </button>
               </div>
             </div>
+          </div>
+          
+          {/* Animated Smoker Visualization */}
+          <div className="mt-6">
+            {getSmokerVisualization()}
           </div>
         </div>
       </div>
