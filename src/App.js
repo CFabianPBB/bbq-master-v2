@@ -455,7 +455,7 @@ const BBQMaster = () => {
                        onChange={(e) => setExpertTipsEnabled(e.target.checked)}
                        className="w-4 h-4" />
                 <label htmlFor="expertTips" className="text-sm">
-                  💡 Enable Expert BBQ Tips (Aaron Franklin, Myron Mixon, etc.)
+                  💡 Enable Expert BBQ Tips (Aaron Franklin, Myron Mixon, Harry Soo, Nick Kittle etc.)
                 </label>
               </div>
 
