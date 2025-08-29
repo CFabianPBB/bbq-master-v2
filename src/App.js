@@ -519,9 +519,29 @@ const BBQMaster = () => {
             <div className="bg-gray-700 rounded-lg p-4">
               <h3 className="font-semibold mb-3">🎛️ Controls</h3>
               
+              {/* Temperature display */}
+              <div className="bg-gray-800 rounded p-3 mb-3">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm">🌡️ Meat Temp:</span>
+                  <span className="text-xl font-bold text-red-400">{internalTemp.toFixed(0)}°F</span>
+                </div>
+                <div className="flex justify-between text-xs text-gray-400">
+                  <span>Target: {meat.finishTemp}°F</span>
+                  <span>{((internalTemp / meat.finishTemp) * 100).toFixed(0)}% done</span>
+                </div>
+                <div className="bg-gray-600 rounded h-2 mt-1">
+                  <div className="bg-red-500 h-full rounded transition-all" 
+                       style={{width: `${Math.min(100, (internalTemp / meat.finishTemp) * 100)}%`}}></div>
+                </div>
+              </div>
+              
               <div className="mb-3">
                 <div className="flex justify-between text-xs mb-1">
-                  <span>Target</span><span>{baseTemperature}°F</span>
+                  <span>Smoker Target</span><span>{baseTemperature}°F</span>
+                </div>
+                <div className="flex justify-between text-xs mb-1 text-gray-400">
+                  <span>Actual: {temperature.toFixed(0)}°F</span>
+                  <span>Fuel: {fuelLevel.toFixed(0)}%</span>
                 </div>
                 <input type="range" min="180" max="500" value={baseTemperature}
                        onChange={(e) => setBaseTemperature(Number(e.target.value))}
