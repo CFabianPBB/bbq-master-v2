@@ -1,0 +1,9 @@
+{
+  "short_name": "BBQ Master",
+  "name": "BBQ Master - Ultimate Competition",
+  "icons": [],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#dc2626",
+  "background_color": "#1f2937"
+}
