@@ -679,6 +679,8 @@ const BBQMaster = () => {
   // Results screen
   if (gameState === 'results') {
     const overall = getOverallScore();
+    const meat = meatData[selectedMeat];
+    const progress = Math.min(100, (internalTemp - 40) / (meat.finishTemp - 40) * 100);
     const revenue = Math.round(progress * marketPrice * 0.5);
     
     return (
