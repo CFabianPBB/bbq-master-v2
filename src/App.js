@@ -1,6 +1,104 @@
 import React, { useState, useEffect } from 'react';
 import { Timer, Thermometer, Flame, Trophy, RotateCcw, Cloud, Sun, CloudRain, Snowflake, Wind, User, Users, Star, Award, Target } from 'lucide-react';
 
+// Your Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyDC-B4uPpeRgMWhww9PxNOv6BhXCNloHns",
+  authDomain: "bbq-master-game.firebaseapp.com",
+  databaseURL: "https://bbq-master-game-default-rtdb.firebaseio.com",
+  projectId: "bbq-master-game",
+  storageBucket: "bbq-master-game.firebasestorage.app",
+  messagingSenderId: "487910556603",
+  appId: "1:487910556603:web:99c689ebf39e1c83617a9e",
+  measurementId: "G-8QB9JN74JN"
+};
+
+// Firebase SDK functions (these will work with CDN imports)
+let firebaseApp;
+let database;
+
+// Initialize Firebase
+const initializeFirebase = () => {
+  if (typeof firebase !== 'undefined') {
+    firebaseApp = firebase.initializeApp(firebaseConfig);
+    database = firebase.database();
+    console.log('Firebase initialized successfully!');
+    return true;
+  } else {
+    console.warn('Firebase SDK not loaded, using localStorage fallback');
+    return false;
+  }
+};
+
+// Firebase wrapper with localStorage fallback
+const firebaseService = {
+  database: {
+    ref: (path) => ({
+      push: async (data) => {
+        if (database) {
+          try {
+            const result = await database.ref(path).push(data);
+            return { key: result.key };
+          } catch (error) {
+            console.error('Firebase push error:', error);
+          }
+        }
+        
+        // Fallback to localStorage
+        const existing = JSON.parse(localStorage.getItem(`bbq-${path}`) || '[]');
+        const newEntry = { ...data, id: Date.now().toString() };
+        existing.push(newEntry);
+        localStorage.setItem(`bbq-${path}`, JSON.stringify(existing.slice(-100)));
+        return { key: newEntry.id };
+      },
+      on: (event, callback) => {
+        if (database) {
+          try {
+            database.ref(path).on(event, (snapshot) => {
+              callback({ val: () => snapshot.val() || [] });
+            });
+            return;
+          } catch (error) {
+            console.error('Firebase listener error:', error);
+          }
+        }
+        
+        // Fallback to localStorage with periodic updates
+        const updateData = () => {
+          const data = JSON.parse(localStorage.getItem(`bbq-${path}`) || '[]');
+          callback({ val: () => data });
+        };
+        
+        updateData();
+        const interval = setInterval(updateData, 5000);
+        return () => clearInterval(interval);
+      },
+      orderByChild: (child) => ({
+        limitToLast: (limit) => ({
+          on: (event, callback) => {
+            if (database) {
+              try {
+                database.ref(path).orderByChild(child).limitToLast(limit).on(event, (snapshot) => {
+                  callback({ val: () => snapshot.val() || [] });
+                });
+                return;
+              } catch (error) {
+                console.error('Firebase ordered query error:', error);
+              }
+            }
+            
+            // Fallback
+            const data = JSON.parse(localStorage.getItem(`bbq-${path}`) || '[]')
+              .sort((a, b) => b[child] - a[child])
+              .slice(0, limit);
+            callback({ val: () => data });
+          }
+        })
+      })
+    })
+  }
+};
+
 const BBQMaster = () => {
   // Core state
   const [gameState, setGameState] = useState('entry');
@@ -42,6 +140,8 @@ const BBQMaster = () => {
   const [damperPosition, setDamperPosition] = useState(50);
   const [hourlyReports, setHourlyReports] = useState([]);
   const [lastReportHour, setLastReportHour] = useState(0);
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
 
   // Meat definitions
   const meatData = {
@@ -369,7 +469,67 @@ const BBQMaster = () => {
     return report;
   };
 
-  // Game timer effect
+  // Initialize Firebase and leaderboard
+  useEffect(() => {
+    // Try to initialize Firebase
+    const firebaseReady = initializeFirebase();
+    
+    // Initialize leaderboard listener
+    const unsubscribe = firebaseService.database.ref('leaderboard')
+      .orderByChild('score')
+      .limitToLast(20)
+      .on('value', (snapshot) => {
+        const data = snapshot.val() || [];
+        const sortedData = Array.isArray(data) ? 
+          data.sort((a, b) => b.score - a.score) : 
+          Object.values(data).sort((a, b) => b.score - a.score);
+        setLeaderboard(sortedData);
+      });
+
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, []);
+
+  // Log player login for email notifications
+  const logPlayerLogin = async (playerName, playerEmail) => {
+    try {
+      await firebaseService.database.ref('player-logins').push({
+        name: playerName,
+        email: playerEmail || 'anonymous',
+        timestamp: Date.now(),
+        userAgent: navigator.userAgent,
+        location: 'Unknown' // Could add geolocation later
+      });
+      console.log('Player login logged for:', playerName);
+    } catch (error) {
+      console.error('Failed to log player login:', error);
+    }
+  };
+
+  // Save score to leaderboard
+  const saveScoreToLeaderboard = async (finalScore) => {
+    try {
+      await firebaseService.database.ref('leaderboard').push({
+        name: playerName,
+        email: playerEmail || 'anonymous', 
+        score: finalScore,
+        meat: selectedMeat,
+        smoker: smokerType,
+        region: region,
+        weather: weather,
+        cookTime: Math.round(cookTime * 100) / 100,
+        barkScore: Math.round(barkDevelopment),
+        moistureScore: Math.round(moistureLevel),
+        smokeScore: Math.round(smokeRingDepth),
+        timestamp: Date.now(),
+        date: new Date().toLocaleDateString()
+      });
+      console.log('Score saved to leaderboard:', finalScore);
+    } catch (error) {
+      console.error('Failed to save score:', error);
+    }
+  };
   useEffect(() => {
     if (gameState === 'cooking') {
       const interval = setInterval(() => {
@@ -518,7 +678,11 @@ const BBQMaster = () => {
   }, [gameState, temperature, selectedMeat, hasWrapped, wrapType, region, weather, cookTime, internalTemp, woodChipsAdded, spritzeCount, waterPanActive, fuelLevel, isStalled, pitMasterMode, damperPosition, expertTipsEnabled, tipTimer, lastReportHour, barkDevelopment]);
 
   // Game functions
-  const startGame = () => setGameState('setup');
+  const startGame = () => {
+    setGameState('setup');
+    // Log player login
+    logPlayerLogin(playerName, playerEmail);
+  };
   
   const beginCooking = () => {
     if (selectedMeat && smokerType) {
@@ -974,6 +1138,14 @@ const BBQMaster = () => {
             {playerName.trim() && (
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-20 transform -skew-x-12 animate-pulse"></div>
             )}
+          </button>
+
+          {/* Leaderboard Preview Button */}
+          <button
+            onClick={() => setShowLeaderboard(true)}
+            className="w-full mt-4 py-3 px-8 rounded-xl text-lg font-bold bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 transition-all transform hover:scale-105"
+          >
+            🏆 View Global Leaderboard 🏆
           </button>
 
           {/* Feature highlights */}
@@ -1505,6 +1677,11 @@ const BBQMaster = () => {
     const score = calculateScore();
     const grade = score >= 90 ? 'A+' : score >= 80 ? 'A' : score >= 70 ? 'B' : score >= 60 ? 'C' : 'D';
     
+    // Save score to leaderboard when results screen loads
+    useEffect(() => {
+      saveScoreToLeaderboard(score);
+    }, []);
+    
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-900 to-blue-900 text-white p-8">
         <div className="max-w-4xl mx-auto text-center">
@@ -1516,6 +1693,7 @@ const BBQMaster = () => {
               {grade === 'A+' ? '🏆' : grade === 'A' ? '🥇' : grade === 'B' ? '🥈' : grade === 'C' ? '🥉' : '📚'}
             </div>
             <div className="text-2xl font-semibold">Grade: {grade}</div>
+            <div className="text-sm opacity-70 mt-2">Score saved to global leaderboard!</div>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
@@ -1567,13 +1745,110 @@ const BBQMaster = () => {
             </div>
           )}
           
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <button
               onClick={resetGame}
               className="bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 px-8 rounded-lg text-xl transition-colors"
             >
               🔥 Cook Another Cut
             </button>
+            <button
+              onClick={() => setShowLeaderboard(true)}
+              className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-8 rounded-lg text-xl transition-colors"
+            >
+              🏆 View Leaderboard
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Leaderboard Modal/Screen
+  if (showLeaderboard) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 to-indigo-900 text-white p-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex justify-between items-center mb-8">
+            <h1 className="text-4xl font-bold">🏆 Global BBQ Leaderboard</h1>
+            <button 
+              onClick={() => setShowLeaderboard(false)}
+              className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-lg transition-colors"
+            >
+              ✕ Close
+            </button>
+          </div>
+
+          <div className="bg-gray-800 rounded-lg p-6">
+            {leaderboard.length === 0 ? (
+              <div className="text-center py-12">
+                <Trophy size={64} className="mx-auto mb-4 opacity-50" />
+                <p className="text-xl opacity-80">No scores yet - be the first BBQ Master!</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-6 gap-4 text-sm font-semibold text-gray-300 border-b border-gray-600 pb-2">
+                  <div>Rank</div>
+                  <div>Pitmaster</div>
+                  <div>Score</div>
+                  <div>Meat</div>
+                  <div>Region</div>
+                  <div>Date</div>
+                </div>
+                
+                {leaderboard.map((entry, index) => (
+                  <div 
+                    key={entry.id || index} 
+                    className={`grid grid-cols-6 gap-4 py-3 px-4 rounded-lg transition-colors ${
+                      index < 3 ? 'bg-yellow-900 bg-opacity-30 border border-yellow-600' : 'bg-gray-700'
+                    } hover:bg-gray-600`}
+                  >
+                    <div className="flex items-center">
+                      <span className="text-xl mr-2">
+                        {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
+                      </span>
+                    </div>
+                    <div className="font-semibold">
+                      {entry.name}
+                      {entry.name === playerName && (
+                        <span className="ml-2 text-xs bg-blue-600 px-2 py-1 rounded">YOU</span>
+                      )}
+                    </div>
+                    <div className="text-xl font-bold text-orange-400">{entry.score}</div>
+                    <div className="flex items-center">
+                      <span className="mr-1">{meatData[entry.meat]?.emoji}</span>
+                      <span className="text-sm">{meatData[entry.meat]?.name}</span>
+                    </div>
+                    <div className="text-sm">{regions[entry.region]?.name}</div>
+                    <div className="text-sm text-gray-400">{entry.date}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-8 text-center">
+            <div className="bg-gray-800 rounded-lg p-4 inline-block">
+              <div className="text-sm text-gray-300 mb-2">Leaderboard Stats</div>
+              <div className="flex space-x-6 text-sm">
+                <div>
+                  <span className="text-orange-400 font-bold">{leaderboard.length}</span>
+                  <span className="text-gray-400"> Total Cooks</span>
+                </div>
+                <div>
+                  <span className="text-orange-400 font-bold">
+                    {leaderboard.length > 0 ? Math.round(leaderboard.reduce((sum, entry) => sum + entry.score, 0) / leaderboard.length) : 0}
+                  </span>
+                  <span className="text-gray-400"> Avg Score</span>
+                </div>
+                <div>
+                  <span className="text-orange-400 font-bold">
+                    {leaderboard.length > 0 ? Math.max(...leaderboard.map(entry => entry.score)) : 0}
+                  </span>
+                  <span className="text-gray-400"> High Score</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
