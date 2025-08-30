@@ -651,49 +651,139 @@ const BBQMaster = () => {
       <div className="bg-gray-900 rounded-lg p-4 h-64 relative overflow-hidden border-4 border-gray-700">
         <div className="absolute inset-0 bg-gradient-to-b from-gray-800 to-gray-900"></div>
         
-        {/* Smoke wisps */}
+        {/* Enhanced Smoke wisps - way more smoke! */}
         <div className="absolute inset-0">
-          {[...Array(5)].map((_, i) => (
+          {[...Array(15)].map((_, i) => (
             <div
-              key={i}
-              className="absolute w-3 h-3 bg-gray-400 rounded-full opacity-30 animate-pulse"
+              key={`smoke-${i}`}
+              className="absolute bg-gray-400 rounded-full opacity-40 animate-pulse"
               style={{
-                left: `${20 + i * 15}%`,
-                top: `${10 + Math.sin(Date.now() / 1000 + i) * 10}%`,
-                opacity: smokeOpacity * (0.3 + Math.random() * 0.4),
-                animationDelay: `${i * 0.5}s`
+                width: `${8 + Math.random() * 12}px`,
+                height: `${8 + Math.random() * 12}px`,
+                left: `${10 + i * 6}%`,
+                top: `${5 + Math.sin(Date.now() / 1000 + i) * 15 + Math.random() * 20}%`,
+                opacity: smokeOpacity * (0.2 + Math.random() * 0.5),
+                animationDelay: `${i * 0.3}s`,
+                animationDuration: `${2 + Math.random() * 2}s`
+              }}
+            />
+          ))}
+          
+          {/* Floating smoke particles */}
+          {[...Array(12)].map((_, i) => (
+            <div
+              key={`particle-${i}`}
+              className="absolute w-2 h-2 bg-gray-500 rounded-full opacity-30 animate-bounce"
+              style={{
+                left: `${Math.random() * 90}%`,
+                top: `${Math.random() * 60}%`,
+                animationDelay: `${Math.random() * 3}s`,
+                animationDuration: `${3 + Math.random() * 2}s`
+              }}
+            />
+          ))}
+
+          {/* Drifting smoke clouds */}
+          {[...Array(8)].map((_, i) => (
+            <div
+              key={`cloud-${i}`}
+              className="absolute bg-gray-300 rounded-full opacity-20 animate-ping"
+              style={{
+                width: `${15 + Math.random() * 25}px`,
+                height: `${10 + Math.random() * 15}px`,
+                left: `${Math.random() * 80}%`,
+                top: `${Math.random() * 40}%`,
+                animationDelay: `${i * 0.7}s`,
+                animationDuration: `${4 + Math.random() * 3}s`
               }}
             />
           ))}
         </div>
 
-        {/* Meat visualization */}
-        <div className="absolute bottom-16 left-1/2 transform -translate-x-1/2">
+        {/* MASSIVE Meat visualization - 5x bigger! */}
+        <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2">
           <div 
-            className="w-24 h-16 rounded-lg border-2 transition-all duration-1000"
+            className="w-48 h-32 rounded-xl border-4 transition-all duration-1000 relative overflow-hidden"
             style={{
               backgroundColor: `rgb(${Math.max(139, barkColor)}, ${Math.max(69, barkColor * 0.5)}, ${Math.max(19, barkColor * 0.2)})`,
               borderColor: hasWrapped ? (wrapType === 'foil' ? '#C0C0C0' : '#8B4513') : '#4A4A4A',
-              borderWidth: hasWrapped ? '3px' : '1px',
-              filter: `brightness(${0.7 + meatDoneness * 0.3})`
+              borderWidth: hasWrapped ? '4px' : '2px',
+              filter: `brightness(${0.7 + meatDoneness * 0.3})`,
+              boxShadow: hasWrapped ? 'inset 0 0 20px rgba(0,0,0,0.3)' : 'none'
             }}
           >
-            <div className="text-center mt-2 text-xs">
-              {meatData[selectedMeat].emoji}
+            {/* Meat texture and details */}
+            <div className="absolute inset-2 rounded-lg opacity-60"
+                 style={{
+                   background: `linear-gradient(45deg, 
+                     rgba(139, 69, 19, 0.3) 25%, 
+                     transparent 25%, 
+                     transparent 75%, 
+                     rgba(139, 69, 19, 0.3) 75%),
+                   linear-gradient(45deg, 
+                     rgba(139, 69, 19, 0.3) 25%, 
+                     transparent 25%, 
+                     transparent 75%, 
+                     rgba(139, 69, 19, 0.3) 75%)`,
+                   backgroundSize: '20px 20px',
+                   backgroundPosition: '0 0, 10px 10px'
+                 }}
+            />
+            
+            {/* Giant meat emoji in center */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-6xl opacity-90">
+                {meatData[selectedMeat].emoji}
+              </span>
             </div>
+
+            {/* Bark development visual indicator */}
+            {barkDevelopment > 30 && (
+              <div className="absolute inset-0 border-2 border-amber-800 rounded-xl opacity-60"></div>
+            )}
+            
+            {/* Wrapping visualization */}
+            {hasWrapped && (
+              <div className="absolute -inset-2 rounded-xl border-4 border-dashed opacity-80"
+                   style={{
+                     borderColor: wrapType === 'foil' ? '#C0C0C0' : '#8B4513'
+                   }}>
+                <div className="absolute top-1 left-1 text-xs font-bold text-white bg-black bg-opacity-50 px-2 py-1 rounded">
+                  {wrapType === 'foil' ? 'FOIL' : 'PAPER'}
+                </div>
+              </div>
+            )}
           </div>
           
-          {/* Steam/moisture visualization */}
-          {moistureLevel > 60 && (
-            <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
+          {/* Enhanced Steam/moisture visualization */}
+          {moistureLevel > 50 && (
+            <div className="absolute -top-8 left-1/2 transform -translate-x-1/2">
+              {[...Array(6)].map((_, i) => (
+                <div
+                  key={`steam-${i}`}
+                  className="absolute bg-blue-200 rounded-full opacity-60 animate-bounce"
+                  style={{
+                    width: `${3 + Math.random() * 4}px`,
+                    height: `${3 + Math.random() * 4}px`,
+                    left: `${(i - 3) * 8}px`,
+                    animationDelay: `${i * 0.2}s`,
+                    animationDuration: `${1.5 + Math.random()}s`
+                  }}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Drip effects for high moisture */}
+          {moistureLevel > 80 && !hasWrapped && (
+            <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2">
               {[...Array(3)].map((_, i) => (
                 <div
-                  key={i}
-                  className="absolute w-1 h-1 bg-blue-200 rounded-full opacity-50 animate-bounce"
+                  key={`drip-${i}`}
+                  className="absolute w-1 h-4 bg-amber-600 rounded-full opacity-70 animate-pulse"
                   style={{
-                    left: `${i * 4}px`,
-                    animationDelay: `${i * 0.3}s`,
-                    animationDuration: '2s'
+                    left: `${(i - 1) * 20}px`,
+                    animationDelay: `${i * 0.5}s`
                   }}
                 />
               ))}
@@ -702,18 +792,32 @@ const BBQMaster = () => {
         </div>
 
         {/* Temperature grates */}
-        <div className="absolute bottom-8 w-full">
-          <div className="w-full h-1 bg-gray-600 rounded"></div>
-          <div className="w-full h-1 bg-gray-600 rounded mt-2"></div>
+        <div className="absolute bottom-12 w-full px-4">
+          <div className="w-full h-2 bg-gray-600 rounded shadow-lg"></div>
+          <div className="w-full h-2 bg-gray-600 rounded mt-3 shadow-lg"></div>
         </div>
 
-        {/* Fire indicator */}
-        <div className="absolute bottom-2 left-4">
+        {/* Enhanced Fire indicator with more flames */}
+        <div className="absolute bottom-2 left-4 flex items-center space-x-1">
           <div 
-            className="text-orange-500 animate-pulse"
+            className="flex space-x-1 animate-pulse"
             style={{ opacity: fuelLevel / 100 }}
           >
-            🔥 {fuelLevel > 50 ? '🔥🔥' : fuelLevel > 20 ? '🔥' : '💨'}
+            <span className="text-orange-500 animate-bounce" style={{ animationDuration: '0.8s' }}>🔥</span>
+            {fuelLevel > 30 && (
+              <span className="text-red-500 animate-bounce" style={{ animationDuration: '1.1s', animationDelay: '0.2s' }}>🔥</span>
+            )}
+            {fuelLevel > 60 && (
+              <span className="text-yellow-500 animate-bounce" style={{ animationDuration: '0.9s', animationDelay: '0.4s' }}>🔥</span>
+            )}
+          </div>
+        </div>
+
+        {/* Smoke intensity indicator */}
+        <div className="absolute top-2 right-4">
+          <div className="flex items-center space-x-1 text-xs text-gray-300">
+            <span>💨</span>
+            <span>{Math.round(smokeOpacity * 100)}%</span>
           </div>
         </div>
       </div>
