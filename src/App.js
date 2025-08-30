@@ -19,9 +19,9 @@ let database;
 
 // Initialize Firebase
 const initializeFirebase = () => {
-  if (typeof firebase !== 'undefined') {
-    firebaseApp = firebase.initializeApp(firebaseConfig);
-    database = firebase.database();
+  if (typeof window !== 'undefined' && window.firebase) {
+    firebaseApp = window.firebase.initializeApp(firebaseConfig);
+    database = window.firebase.database();
     console.log('Firebase initialized successfully!');
     return true;
   } else {
@@ -1677,10 +1677,32 @@ const BBQMaster = () => {
     const score = calculateScore();
     const grade = score >= 90 ? 'A+' : score >= 80 ? 'A' : score >= 70 ? 'B' : score >= 60 ? 'C' : 'D';
     
-    // Save score to leaderboard when results screen loads
+    return (
+      <ResultsScreen 
+        score={score} 
+        grade={grade} 
+        saveScoreToLeaderboard={saveScoreToLeaderboard}
+        hourlyReports={hourlyReports}
+        barkDevelopment={barkDevelopment}
+        moistureLevel={moistureLevel}
+        smokeRingDepth={smokeRingDepth}
+        collagenBreakdown={collagenBreakdown}
+        cookTime={cookTime}
+        spritzeCount={spritzeCount}
+        hasWrapped={hasWrapped}
+        woodChipsAdded={woodChipsAdded}
+        resetGame={resetGame}
+        setShowLeaderboard={setShowLeaderboard}
+      />
+    );
+  }
+
+  // Results Screen Component
+  const ResultsScreen = ({ score, grade, saveScoreToLeaderboard, hourlyReports, barkDevelopment, moistureLevel, smokeRingDepth, collagenBreakdown, cookTime, spritzeCount, hasWrapped, woodChipsAdded, resetGame, setShowLeaderboard }) => {
+    // Save score when component mounts
     useEffect(() => {
       saveScoreToLeaderboard(score);
-    }, []);
+    }, [score, saveScoreToLeaderboard]);
     
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-900 to-blue-900 text-white p-8">
@@ -1762,7 +1784,7 @@ const BBQMaster = () => {
         </div>
       </div>
     );
-  }
+  };
 
   // Leaderboard Modal/Screen
   if (showLeaderboard) {
