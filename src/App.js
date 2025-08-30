@@ -58,7 +58,8 @@ const BBQMaster = () => {
     offset: { name: 'Offset Smoker', emoji: '🏭', difficulty: 'hard', tempStability: 0.3 },
     kettle: { name: 'Weber Kettle', emoji: '⚫', difficulty: 'medium', tempStability: 0.6 },
     pellet: { name: 'Pellet Grill', emoji: '🎛️', difficulty: 'easy', tempStability: 0.9 },
-    kamado: { name: 'Kamado Grill', emoji: '🥚', difficulty: 'medium', tempStability: 0.8 }
+    kamado: { name: 'Kamado Grill', emoji: '🥚', difficulty: 'medium', tempStability: 0.8 },
+    electric: { name: 'Electric Smoker', emoji: '⚡', difficulty: 'beginner', tempStability: 0.95 }
   };
 
   // Regional styles
@@ -154,6 +155,19 @@ const BBQMaster = () => {
 
     if (weather === 'windy' && damperPosition > 70) {
       return "💨 Nick Kittle tip: 'Windy day - close your dampers more to prevent temperature swings.'";
+    }
+
+    // Electric smoker specific tips
+    if (smokerType === 'electric' && woodChipsAdded < 2) {
+      const tips = [
+        "⚡ Electric tip: 'Don't forget wood chips! Electric heat is clean but needs smoke for flavor.'",
+        "⚡ Chris Fabian tip: 'Electric smokers need extra wood - the heating element doesn't create smoke.'"
+      ];
+      return tips[Math.floor(Math.random() * tips.length)];
+    }
+
+    if (smokerType === 'electric' && cookTime > 4) {
+      return "⚡ Harry Soo tip: 'Electric smokers excel at long, steady cooks - let that consistent heat work for you.'";
     }
 
     // Advanced tips
@@ -292,6 +306,25 @@ const BBQMaster = () => {
       techniqueScore -= 8;
     }
 
+    // Electric smoker specific feedback
+    if (smokerType === 'electric') {
+      if (woodChipsAdded >= 4) {
+        report.feedback.push("⚡ Great wood chip usage for electric smoker");
+        techniqueDetails.push("Electric smokers need extra wood for flavor - you're doing it right");
+        techniqueScore += 8;
+      } else if (woodChipsAdded < 2) {
+        report.improvements.push("⚡ Electric smokers need more wood chips for flavor");
+        techniqueDetails.push("Electric heating elements don't create smoke - wood chips are essential");
+        techniqueScore -= 12;
+      }
+      
+      if (tempDiff <= 5) {
+        report.feedback.push("⚡ Perfect electric smoker temperature control");
+        techniqueDetails.push("Taking advantage of electric's precise temperature control");
+        techniqueScore += 5;
+      }
+    }
+
     // Collagen and fat analysis
     if (selectedMeat === 'brisket' || selectedMeat === 'pork-shoulder') {
       if (collagenBreakdown > 40) {
@@ -372,21 +405,26 @@ const BBQMaster = () => {
         // Temperature fluctuations based on weather and fuel
         const weatherEffect = weatherEffects[weather];
         const baseVariance = weatherEffect.tempVariance;
+        const smokerStability = smokerTypes[smokerType].tempStability;
         const fuelEffect = fuelLevel < 20 ? 0.5 : 1.0;
-        const tempChange = (Math.random() - 0.5) * baseVariance * 10 * fuelEffect;
+        
+        // Electric smokers are much more stable
+        const tempChangeMultiplier = smokerType === 'electric' ? 0.3 : 1.0;
+        const tempChange = (Math.random() - 0.5) * baseVariance * 10 * fuelEffect * tempChangeMultiplier * (1 - smokerStability);
         
         setTemperature(prev => {
           let newTemp = prev + tempChange;
           
-          // Weather-specific effects
-          if (weather === 'cold') newTemp -= 2;
-          if (weather === 'windy') newTemp += Math.random() * 8 - 4;
+          // Weather-specific effects (reduced for electric)
+          if (weather === 'cold') newTemp -= smokerType === 'electric' ? 1 : 2;
+          if (weather === 'windy' && smokerType !== 'electric') newTemp += Math.random() * 8 - 4;
           
           return Math.max(100, Math.min(400, newTemp));
         });
 
-        // Fuel consumption
-        setFuelLevel(prev => Math.max(0, prev - (0.5 * weatherEffects[weather].fuelConsumption)));
+        // Fuel consumption (electric uses less "fuel" representing electricity)
+        const fuelConsumption = smokerType === 'electric' ? 0.2 : 0.5;
+        setFuelLevel(prev => Math.max(0, prev - (fuelConsumption * weatherEffects[weather].fuelConsumption)));
 
         // Temperature-based cooking progression
         const tempDiff = Math.abs(temperature - meatData[selectedMeat].idealTemp);
@@ -718,7 +756,7 @@ const BBQMaster = () => {
                 className="w-4 h-4" 
               />
               <label htmlFor="expertTips" className="text-sm">
-                💡 Enable Expert BBQ Tips (Aaron Franklin, Myron Mixon, etc.)
+                💡 Enable Expert BBQ Tips (Aaron Franklin, Myron Mixon, Nick Kittle, Harry Soo, Chris Fabian etc.)
               </label>
             </div>
           </div>
