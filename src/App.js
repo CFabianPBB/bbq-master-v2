@@ -723,55 +723,184 @@ const BBQMaster = () => {
   // Entry Screen
   if (gameState === 'entry') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-900 to-red-900 text-white p-8">
-        <div className="max-w-md mx-auto text-center">
-          <div className="mb-8">
-            <h1 className="text-4xl font-bold mb-4">🔥 BBQ Master</h1>
-            <p className="text-lg opacity-90">Championship Pitmaster Simulator</p>
+      <div className="min-h-screen bg-gradient-to-br from-orange-900 via-red-900 to-black text-white p-8 relative overflow-hidden">
+        {/* Animated Background Elements */}
+        <div className="absolute inset-0 opacity-20">
+          {/* Floating embers */}
+          {[...Array(15)].map((_, i) => (
+            <div
+              key={`ember-${i}`}
+              className="absolute w-1 h-1 bg-orange-400 rounded-full animate-pulse"
+              style={{
+                left: `${Math.random() * 100}%`,
+                top: `${Math.random() * 100}%`,
+                animationDelay: `${Math.random() * 3}s`,
+                animationDuration: `${2 + Math.random() * 2}s`
+              }}
+            />
+          ))}
+          
+          {/* Smoke wisps */}
+          {[...Array(8)].map((_, i) => (
+            <div
+              key={`smoke-${i}`}
+              className="absolute w-8 h-8 bg-gray-500 rounded-full opacity-30 animate-bounce"
+              style={{
+                left: `${10 + i * 12}%`,
+                top: `${20 + Math.sin(i) * 10}%`,
+                animationDelay: `${i * 0.5}s`,
+                animationDuration: `${3 + Math.random()}s`
+              }}
+            />
+          ))}
+        </div>
+
+        <div className="max-w-2xl mx-auto text-center relative z-10">
+          {/* Giant Animated Flames */}
+          <div className="mb-8 relative">
+            <div className="text-8xl mb-4 relative">
+              {/* Main flame with flickering animation */}
+              <div className="inline-block animate-pulse">
+                <span 
+                  className="text-orange-500 animate-bounce"
+                  style={{ animationDuration: '0.8s' }}
+                >
+                  🔥
+                </span>
+                <span 
+                  className="text-red-500 animate-bounce mx-2"
+                  style={{ animationDuration: '1.1s', animationDelay: '0.2s' }}
+                >
+                  🔥
+                </span>
+                <span 
+                  className="text-yellow-500 animate-bounce"
+                  style={{ animationDuration: '0.9s', animationDelay: '0.4s' }}
+                >
+                  🔥
+                </span>
+              </div>
+              
+              {/* Additional flame effects */}
+              <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
+                {[...Array(5)].map((_, i) => (
+                  <span
+                    key={i}
+                    className="absolute text-orange-400 animate-ping"
+                    style={{
+                      left: `${(i - 2) * 20}px`,
+                      animationDelay: `${i * 0.3}s`,
+                      animationDuration: '2s'
+                    }}
+                  >
+                    🔥
+                  </span>
+                ))}
+              </div>
+            </div>
+            
+            <h1 className="text-6xl font-bold mb-4 bg-gradient-to-r from-orange-400 via-red-500 to-yellow-400 bg-clip-text text-transparent animate-pulse">
+              BBQ MASTER
+            </h1>
+            
+            {/* Smoker visualization */}
+            <div className="mb-6 relative">
+              <div className="text-6xl mb-2">🏭</div>
+              <div className="text-lg opacity-90 bg-black bg-opacity-50 rounded-lg p-4 backdrop-blur-sm">
+                🌟 Championship Pitmaster Simulator 🌟
+                <br />
+                <span className="text-sm opacity-80">Master the art of low & slow cooking</span>
+              </div>
+            </div>
+
+            {/* Wood and smoke effects */}
+            <div className="flex justify-center items-center space-x-4 mb-6">
+              <div className="text-3xl animate-pulse">🪵</div>
+              <div className="text-2xl opacity-70 animate-bounce" style={{ animationDelay: '0.5s' }}>💨</div>
+              <div className="text-3xl animate-pulse" style={{ animationDelay: '1s' }}>🪵</div>
+              <div className="text-2xl opacity-70 animate-bounce" style={{ animationDelay: '1.5s' }}>💨</div>
+              <div className="text-3xl animate-pulse" style={{ animationDelay: '2s' }}>🪵</div>
+            </div>
           </div>
           
-          <div className="space-y-4 mb-8">
+          {/* Enhanced Input Section */}
+          <div className="space-y-4 mb-8 bg-black bg-opacity-40 p-8 rounded-xl backdrop-blur-sm border border-orange-500 border-opacity-30">
             <input
               type="text"
-              placeholder="Enter your name"
+              placeholder="Enter your pitmaster name"
               value={playerName}
               onChange={(e) => setPlayerName(e.target.value)}
-              className="w-full p-4 rounded-lg bg-gray-800 text-white text-center text-xl"
+              className="w-full p-4 rounded-lg bg-gray-900 bg-opacity-80 text-white text-center text-xl border border-orange-400 focus:border-orange-300 focus:ring-2 focus:ring-orange-400 transition-all"
             />
             
             <input
               type="email"
-              placeholder="Email (optional, for leaderboard)"
+              placeholder="Email (optional, for global leaderboard)"
               value={playerEmail}
               onChange={(e) => setPlayerEmail(e.target.value)}
-              className="w-full p-4 rounded-lg bg-gray-800 text-white text-center"
+              className="w-full p-4 rounded-lg bg-gray-900 bg-opacity-80 text-white text-center border border-orange-400 focus:border-orange-300 focus:ring-2 focus:ring-orange-400 transition-all"
             />
 
-            <div className="flex items-center space-x-2 justify-center">
+            <div className="flex items-center space-x-3 justify-center bg-orange-900 bg-opacity-50 p-3 rounded-lg">
               <input 
                 type="checkbox" 
                 id="expertTips" 
                 checked={expertTipsEnabled} 
                 onChange={(e) => setExpertTipsEnabled(e.target.checked)}
-                className="w-4 h-4" 
+                className="w-5 h-5 text-orange-500" 
               />
-              <label htmlFor="expertTips" className="text-sm">
-                💡 Enable Expert BBQ Tips (Aaron Franklin, Myron Mixon, Nick Kittle, Harry Soo, Chris Fabian etc.)
+              <label htmlFor="expertTips" className="text-sm font-semibold">
+                💡 Get coaching from BBQ legends
+                <div className="text-xs opacity-80">Aaron Franklin • Myron Mixon • Harry Soo • Nick Kittle • Chris Fabian</div>
               </label>
             </div>
           </div>
           
+          {/* Epic Start Button */}
           <button
             onClick={startGame}
             disabled={!playerName.trim()}
-            className={`w-full py-4 px-8 rounded-lg text-xl font-bold transition-colors ${
+            className={`w-full py-6 px-8 rounded-xl text-2xl font-bold transition-all transform hover:scale-105 relative overflow-hidden ${
               playerName.trim() 
-                ? 'bg-orange-600 hover:bg-orange-700' 
+                ? 'bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 shadow-2xl shadow-orange-500/50' 
                 : 'bg-gray-600 cursor-not-allowed'
             }`}
           >
-            🚀 Start BBQ Championship
+            <span className="relative z-10">🚀 FIRE UP THE SMOKER! 🚀</span>
+            {playerName.trim() && (
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-20 transform -skew-x-12 animate-pulse"></div>
+            )}
           </button>
+
+          {/* Feature highlights */}
+          <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div className="bg-black bg-opacity-30 p-3 rounded-lg backdrop-blur-sm">
+              <div className="text-2xl mb-1">🥩</div>
+              <div className="font-semibold">6 Meat Types</div>
+              <div className="opacity-80">Brisket to Salmon</div>
+            </div>
+            <div className="bg-black bg-opacity-30 p-3 rounded-lg backdrop-blur-sm">
+              <div className="text-2xl mb-1">📊</div>
+              <div className="font-semibold">Live Coaching</div>
+              <div className="opacity-80">Hourly Report Cards</div>
+            </div>
+            <div className="bg-black bg-opacity-30 p-3 rounded-lg backdrop-blur-sm">
+              <div className="text-2xl mb-1">🧬</div>
+              <div className="font-semibold">Real Science</div>
+              <div className="opacity-80">Collagen & Maillard</div>
+            </div>
+            <div className="bg-black bg-opacity-30 p-3 rounded-lg backdrop-blur-sm">
+              <div className="text-2xl mb-1">🏆</div>
+              <div className="font-semibold">Master Level</div>
+              <div className="opacity-80">Pro Techniques</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom decorative elements */}
+        <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black to-transparent"></div>
+        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-xs opacity-50">
+          🔥 The most realistic BBQ simulation ever created 🔥
         </div>
       </div>
     );
