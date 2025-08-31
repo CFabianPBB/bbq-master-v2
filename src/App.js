@@ -1034,6 +1034,80 @@ const BBQMaster = () => {
     setScoreSaved(false);
   };
 
+  // Leaderboard Screen - MOVED TO TOP PRIORITY
+  if (showLeaderboard) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 to-indigo-900 text-white p-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex justify-between items-center mb-8">
+            <h1 className="text-4xl font-bold">🏆 Global BBQ Leaderboard</h1>
+            <button 
+              onClick={() => setShowLeaderboard(false)}
+              className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-lg transition-colors"
+            >
+              ✕ Close
+            </button>
+          </div>
+
+          <div className="bg-gray-800 rounded-lg p-6">
+            <div className="mb-4 text-center">
+              <p className="text-lg">Found {leaderboard.length} BBQ Masters</p>
+              {leaderboard.length === 0 && (
+                <p className="text-sm opacity-70">Debug: Check console for leaderboard data</p>
+              )}
+            </div>
+
+            {leaderboard.length === 0 ? (
+              <div className="text-center py-12">
+                <Trophy size={64} className="mx-auto mb-4 opacity-50" />
+                <p className="text-xl opacity-80">Loading leaderboard...</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-6 gap-4 text-sm font-semibold text-gray-300 border-b border-gray-600 pb-2">
+                  <div>Rank</div>
+                  <div>Pitmaster</div>
+                  <div>Score</div>
+                  <div>Meat</div>
+                  <div>Region</div>
+                  <div>Date</div>
+                </div>
+                
+                {leaderboard.map((entry, index) => (
+                  <div 
+                    key={entry.id || index} 
+                    className={`grid grid-cols-6 gap-4 py-3 px-4 rounded-lg transition-colors ${
+                      index < 3 ? 'bg-yellow-900 bg-opacity-30 border border-yellow-600' : 'bg-gray-700'
+                    } hover:bg-gray-600`}
+                  >
+                    <div className="flex items-center">
+                      <span className="text-xl mr-2">
+                        {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
+                      </span>
+                    </div>
+                    <div className="font-semibold">
+                      {entry.name}
+                      {entry.name === playerName && (
+                        <span className="ml-2 text-xs bg-blue-600 px-2 py-1 rounded">YOU</span>
+                      )}
+                    </div>
+                    <div className="text-xl font-bold text-orange-400">{entry.score}</div>
+                    <div className="flex items-center">
+                      <span className="mr-1">{meatData[entry.meat]?.emoji}</span>
+                      <span className="text-sm">{meatData[entry.meat]?.name}</span>
+                    </div>
+                    <div className="text-sm">{regions[entry.region]?.name}</div>
+                    <div className="text-sm text-gray-400">{entry.date}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Entry Screen
   if (gameState === 'entry') {
     return (
@@ -1646,80 +1720,6 @@ const BBQMaster = () => {
             >
               🏆 View Leaderboard
             </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Leaderboard Screen
-  if (showLeaderboard) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 to-indigo-900 text-white p-8">
-        <div className="max-w-6xl mx-auto">
-          <div className="flex justify-between items-center mb-8">
-            <h1 className="text-4xl font-bold">🏆 Global BBQ Leaderboard</h1>
-            <button 
-              onClick={() => setShowLeaderboard(false)}
-              className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-lg transition-colors"
-            >
-              ✕ Close
-            </button>
-          </div>
-
-          <div className="bg-gray-800 rounded-lg p-6">
-            <div className="mb-4 text-center">
-              <p className="text-lg">Found {leaderboard.length} BBQ Masters</p>
-              {leaderboard.length === 0 && (
-                <p className="text-sm opacity-70">Debug: Check console for leaderboard data</p>
-              )}
-            </div>
-
-            {leaderboard.length === 0 ? (
-              <div className="text-center py-12">
-                <Trophy size={64} className="mx-auto mb-4 opacity-50" />
-                <p className="text-xl opacity-80">Loading leaderboard...</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="grid grid-cols-6 gap-4 text-sm font-semibold text-gray-300 border-b border-gray-600 pb-2">
-                  <div>Rank</div>
-                  <div>Pitmaster</div>
-                  <div>Score</div>
-                  <div>Meat</div>
-                  <div>Region</div>
-                  <div>Date</div>
-                </div>
-                
-                {leaderboard.map((entry, index) => (
-                  <div 
-                    key={entry.id || index} 
-                    className={`grid grid-cols-6 gap-4 py-3 px-4 rounded-lg transition-colors ${
-                      index < 3 ? 'bg-yellow-900 bg-opacity-30 border border-yellow-600' : 'bg-gray-700'
-                    } hover:bg-gray-600`}
-                  >
-                    <div className="flex items-center">
-                      <span className="text-xl mr-2">
-                        {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
-                      </span>
-                    </div>
-                    <div className="font-semibold">
-                      {entry.name}
-                      {entry.name === playerName && (
-                        <span className="ml-2 text-xs bg-blue-600 px-2 py-1 rounded">YOU</span>
-                      )}
-                    </div>
-                    <div className="text-xl font-bold text-orange-400">{entry.score}</div>
-                    <div className="flex items-center">
-                      <span className="mr-1">{meatData[entry.meat]?.emoji}</span>
-                      <span className="text-sm">{meatData[entry.meat]?.name}</span>
-                    </div>
-                    <div className="text-sm">{regions[entry.region]?.name}</div>
-                    <div className="text-sm text-gray-400">{entry.date}</div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         </div>
       </div>
