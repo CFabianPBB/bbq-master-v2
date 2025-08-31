@@ -650,35 +650,59 @@ const BBQMaster = () => {
         const fuelConsumption = smokerType === 'electric' ? 0.2 : 0.5;
         setFuelLevel(prev => Math.max(0, prev - (fuelConsumption * weatherEffects[weather].fuelConsumption)));
 
-        // Temperature-based cooking progression - FIXED for realistic cooking
+        // Temperature-based cooking progression - FIXED with meat-specific rates
         const tempDiff = Math.abs(temperature - meatData[selectedMeat].idealTemp);
-        const efficiency = Math.max(0.1, 1 - (tempDiff / 200)); // Less penalty for temp variance
+        const efficiency = Math.max(0.1, 1 - (tempDiff / 200));
         
-        // Base cooking rate - much faster
-        let baseRate = 3.0; // Base rate
-        
-        // Temperature multiplier - higher temps cook MUCH faster
-        if (temperature > meatData[selectedMeat].idealTemp + 50) {
-          baseRate *= 2.5; // Very hot = much faster cooking
-        } else if (temperature > meatData[selectedMeat].idealTemp + 25) {
-          baseRate *= 1.8; // Hot = faster cooking
-        } else if (temperature < meatData[selectedMeat].idealTemp - 50) {
-          baseRate *= 0.3; // Cold = much slower
+        // Meat-specific base cooking rates
+        let baseRate;
+        switch(selectedMeat) {
+          case 'brisket':
+            baseRate = 1.2; // Slow cooking for tough brisket
+            break;
+          case 'pork-shoulder':
+            baseRate = 1.0; // Slow for tough pork shoulder
+            break;
+          case 'beef-ribs':
+            baseRate = 1.5; // Medium-slow for beef ribs
+            break;
+          case 'ribs':
+            baseRate = 3.0; // Faster for baby back ribs
+            break;
+          case 'burnt-ends':
+            baseRate = 2.0; // Medium for burnt ends
+            break;
+          case 'salmon':
+            baseRate = 8.0; // Very fast for delicate fish
+            break;
+          default:
+            baseRate = 2.0;
         }
         
-        // Internal temperature progression - MUCH more realistic
+        // Temperature multiplier - higher temps cook faster but differently per meat
+        if (temperature > meatData[selectedMeat].idealTemp + 50) {
+          baseRate *= selectedMeat === 'brisket' ? 1.8 : 2.5; // Brisket less responsive to high heat
+        } else if (temperature > meatData[selectedMeat].idealTemp + 25) {
+          baseRate *= selectedMeat === 'brisket' ? 1.4 : 1.8;
+        } else if (temperature < meatData[selectedMeat].idealTemp - 50) {
+          baseRate *= 0.3;
+        }
+        
+        // Internal temperature progression - realistic per meat type
         setInternalTemp(prev => {
           let increase = baseRate * efficiency;
           
-          // Stall simulation - but realistic based on temperature
-          if (prev >= 150 && prev <= 170 && !hasWrapped && temperature < 300) {
+          // Stall simulation - varies by meat type
+          const stallTemp = selectedMeat === 'brisket' ? [160, 175] : [150, 170];
+          if (prev >= stallTemp[0] && prev <= stallTemp[1] && !hasWrapped && temperature < 300) {
             if (!isStalled) {
               setIsStalled(true);
               setStallStartTime(cookTime);
             }
-            // High heat powers through stall quickly
-            increase *= temperature > 275 ? 0.8 : 0.4;
-          } else if (isStalled && (hasWrapped || prev > 170 || temperature > 300)) {
+            // Brisket has longer, more stubborn stalls
+            const stallMultiplier = selectedMeat === 'brisket' ? 0.2 : 0.4;
+            increase *= temperature > 275 ? stallMultiplier * 2 : stallMultiplier;
+          } else if (isStalled && (hasWrapped || prev > stallTemp[1] || temperature > 300)) {
             setIsStalled(false);
           }
           
