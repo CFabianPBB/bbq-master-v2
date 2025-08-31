@@ -147,7 +147,7 @@ const BBQMaster = () => {
   // Meat definitions
   const meatData = {
     brisket: { name: 'Brisket', emoji: '🥩', difficulty: 'expert', idealTemp: 250, idealTime: 12, wrapTemp: 160, finishTemp: 203, price: 150 },
-    ribs: { name: 'Ribs', emoji: '🖤', difficulty: 'beginner', idealTemp: 225, idealTime: 6, wrapTemp: 165, finishTemp: 195, price: 80 },
+    ribs: { name: 'Ribs', emoji: '🍖', difficulty: 'beginner', idealTemp: 225, idealTime: 6, wrapTemp: 165, finishTemp: 195, price: 80 },
     'burnt-ends': { name: 'Burnt Ends', emoji: '🔥', difficulty: 'intermediate', idealTemp: 275, idealTime: 8, wrapTemp: 165, finishTemp: 195, price: 120 },
     'pork-shoulder': { name: 'Pork Shoulder', emoji: '🐷', difficulty: 'intermediate', idealTemp: 225, idealTime: 14, wrapTemp: 165, finishTemp: 205, price: 90 },
     'beef-ribs': { name: 'Beef Ribs', emoji: '🦴', difficulty: 'expert', idealTemp: 275, idealTime: 10, wrapTemp: 170, finishTemp: 210, price: 200 },
@@ -560,15 +560,23 @@ const BBQMaster = () => {
     
     // Initialize leaderboard listener
     const unsubscribe = firebaseService.database.ref('leaderboard')
-      .orderByChild('score')
-      .limitToLast(20)
       .on('value', (snapshot) => {
-        const data = snapshot.val() || [];
-        console.log('Leaderboard data received:', data);
-        const sortedData = Array.isArray(data) ? 
-          data.sort((a, b) => b.score - a.score) : 
-          Object.values(data).sort((a, b) => b.score - a.score);
-        setLeaderboard(sortedData);
+        const data = snapshot.val();
+        console.log('Raw leaderboard data:', data);
+        
+        if (data) {
+          // Convert Firebase object to array and sort by score
+          const leaderboardArray = Object.entries(data).map(([key, value]) => ({
+            ...value,
+            id: key
+          })).sort((a, b) => b.score - a.score);
+          
+          console.log('Processed leaderboard:', leaderboardArray);
+          setLeaderboard(leaderboardArray);
+        } else {
+          console.log('No leaderboard data found');
+          setLeaderboard([]);
+        }
       });
 
     return () => {
@@ -646,17 +654,17 @@ const BBQMaster = () => {
         const tempDiff = Math.abs(temperature - meatData[selectedMeat].idealTemp);
         const efficiency = Math.max(0.1, 1 - (tempDiff / 100));
         
-        // Internal temperature progression
+        // Internal temperature progression - Fixed and more realistic
         setInternalTemp(prev => {
-          let increase = 0.8 * efficiency;
+          let increase = 2.0 * efficiency; // Much faster progression
           
-          // Stall simulation (between 150-170°F)
+          // Stall simulation (between 150-170°F) - but less severe
           if (prev >= 150 && prev <= 170 && !hasWrapped) {
             if (!isStalled) {
               setIsStalled(true);
               setStallStartTime(cookTime);
             }
-            increase *= 0.1;
+            increase *= 0.3; // Less severe stall
           } else if (isStalled && (hasWrapped || prev > 170)) {
             setIsStalled(false);
           }
@@ -1296,7 +1304,7 @@ const BBQMaster = () => {
                       fuelLevel > 10 ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 cursor-not-allowed'
                     }`}
                   >
-                    🌳 Wood ({woodChipsAdded}/12)
+                    🪵 Wood ({woodChipsAdded}/12)
                   </button>
                   
                   <button
