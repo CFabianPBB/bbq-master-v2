@@ -1689,36 +1689,119 @@ const BBQMaster = () => {
   }
 
   // Results Screen
-if (gameState === 'results') {
-  const score = calculateScore();
-  const grade = score >= 90 ? 'A+' : score >= 80 ? 'A' : score >= 70 ? 'B' : score >= 60 ? 'C' : 'D';
-  
-  // Save score when results screen loads
-  React.useEffect(() => {
-    console.log('Results screen loaded, saving score:', score);
-    saveScoreToLeaderboard(score);
-  }, [score]);
-  
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 to-blue-900 text-white p-8">
-      <div className="max-w-4xl mx-auto text-center">
-        <h1 className="text-4xl font-bold mb-8">🏆 Cook Complete!</h1>
-        
-        <div className="bg-gray-800 rounded-lg p-8 mb-8">
-          <h2 className="text-3xl font-bold mb-4">Final Score: {score}/100</h2>
-          <div className="text-6xl mb-4">
-            {grade === 'A+' ? '🏆' : grade === 'A' ? '🥇' : grade === 'B' ? '🥈' : grade === 'C' ? '🥉' : '📚'}
-          </div>
-          <div className="text-2xl font-semibold">Grade: {grade}</div>
-          <div className="text-sm opacity-70 mt-2">Score saved to global leaderboard!</div>
-        </div>
-
-        {/* Rest of your results screen JSX here... */}
-      </div>
-    </div>
-  );
-}
+  if (gameState === 'results') {
+    const score = calculateScore();
+    const grade = score >= 90 ? 'A+' : score >= 80 ? 'A' : score >= 70 ? 'B' : score >= 60 ? 'C' : 'D';
     
+    return (
+      <ResultsScreen 
+        score={score} 
+        grade={grade} 
+        saveScoreToLeaderboard={saveScoreToLeaderboard}
+        hourlyReports={hourlyReports}
+        barkDevelopment={barkDevelopment}
+        moistureLevel={moistureLevel}
+        smokeRingDepth={smokeRingDepth}
+        collagenBreakdown={collagenBreakdown}
+        cookTime={cookTime}
+        spritzeCount={spritzeCount}
+        hasWrapped={hasWrapped}
+        woodChipsAdded={woodChipsAdded}
+        resetGame={resetGame}
+        setShowLeaderboard={setShowLeaderboard}
+      />
+    );
+  }
+
+  // Results Screen Component
+  const ResultsScreen = ({ score, grade, saveScoreToLeaderboard, hourlyReports, barkDevelopment, moistureLevel, smokeRingDepth, collagenBreakdown, cookTime, spritzeCount, hasWrapped, woodChipsAdded, resetGame, setShowLeaderboard }) => {
+    // Save score when component mounts
+    useEffect(() => {
+      saveScoreToLeaderboard(score);
+    }, [score, saveScoreToLeaderboard]);
+    
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 to-blue-900 text-white p-8">
+        <div className="max-w-4xl mx-auto text-center">
+          <h1 className="text-4xl font-bold mb-8">🏆 Cook Complete!</h1>
+          
+          <div className="bg-gray-800 rounded-lg p-8 mb-8">
+            <h2 className="text-3xl font-bold mb-4">Final Score: {score}/100</h2>
+            <div className="text-6xl mb-4">
+              {grade === 'A+' ? '🏆' : grade === 'A' ? '🥇' : grade === 'B' ? '🥈' : grade === 'C' ? '🥉' : '📚'}
+            </div>
+            <div className="text-2xl font-semibold">Grade: {grade}</div>
+            <div className="text-sm opacity-70 mt-2">Score saved to global leaderboard!</div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+            <div className="bg-gray-800 rounded-lg p-4">
+              <div className="text-lg font-semibold">Bark Quality</div>
+              <div className="text-2xl">{Math.round(barkDevelopment)}%</div>
+            </div>
+            <div className="bg-gray-800 rounded-lg p-4">
+              <div className="text-lg font-semibold">Moisture</div>
+              <div className="text-2xl">{Math.round(moistureLevel)}%</div>
+            </div>
+            <div className="bg-gray-800 rounded-lg p-4">
+              <div className="text-lg font-semibold">Smoke Ring</div>
+              <div className="text-2xl">{Math.round(smokeRingDepth)}%</div>
+            </div>
+            <div className="bg-gray-800 rounded-lg p-4">
+              <div className="text-lg font-semibold">Tenderness</div>
+              <div className="text-2xl">{Math.round(collagenBreakdown)}%</div>
+            </div>
+            <div className="bg-gray-800 rounded-lg p-4">
+              <div className="text-lg font-semibold">Cook Time</div>
+              <div className="text-2xl">{Math.floor(cookTime)}h {Math.floor((cookTime % 1) * 60)}m</div>
+            </div>
+            <div className="bg-gray-800 rounded-lg p-4">
+              <div className="text-lg font-semibold">Techniques</div>
+              <div className="text-2xl">{spritzeCount + (hasWrapped ? 1 : 0) + woodChipsAdded}</div>
+            </div>
+          </div>
+
+          {/* Show hourly reports summary */}
+          {hourlyReports.length > 0 && (
+            <div className="bg-gray-800 rounded-lg p-6 mb-8">
+              <h3 className="text-xl font-semibold mb-4">📊 Performance Summary</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {hourlyReports.slice(-3).map((report, index) => (
+                  <div key={report.hour} className="bg-gray-700 rounded p-3">
+                    <div className="text-sm font-semibold mb-1">Hour {report.hour}</div>
+                    <div className={`text-2xl font-bold ${
+                      report.overallGrade === 'A' ? 'text-green-400' :
+                      report.overallGrade === 'B' ? 'text-blue-400' :
+                      report.overallGrade === 'C' ? 'text-yellow-400' :
+                      report.overallGrade === 'D' ? 'text-orange-400' : 'text-red-400'
+                    }`}>
+                      {report.overallGrade}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <button
+              onClick={resetGame}
+              className="bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 px-8 rounded-lg text-xl transition-colors"
+            >
+              🔥 Cook Another Cut
+            </button>
+            <button
+              onClick={() => setShowLeaderboard(true)}
+              className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-8 rounded-lg text-xl transition-colors"
+            >
+              🏆 View Leaderboard
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Leaderboard Modal/Screen
   if (showLeaderboard) {
     return (
