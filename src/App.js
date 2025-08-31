@@ -142,6 +142,7 @@ const BBQMaster = () => {
   const [lastReportHour, setLastReportHour] = useState(0);
   const [leaderboard, setLeaderboard] = useState([]);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [scoreSaved, setScoreSaved] = useState(false);
 
   // Meat definitions
   const meatData = {
@@ -178,38 +179,32 @@ const BBQMaster = () => {
     cold: { name: 'Cold', emoji: '❄️', tempVariance: 0.15, fuelConsumption: 1.8 }
   };
 
-  // Initialize Firebase and leaderboard
-  useEffect(() => {
-    // Wait for Firebase to load, then initialize
-    const initFirebaseWhenReady = () => {
-      if (typeof window !== 'undefined' && window.firebase) {
-        const firebaseReady = initializeFirebase();
-        console.log('Firebase ready:', firebaseReady);
-      } else {
-        console.log('Waiting for Firebase SDK to load...');
-        setTimeout(initFirebaseWhenReady, 1000);
-      }
-    };
+  // Calculate score function
+  const calculateScore = () => {
+    if (!selectedMeat) return 0;
     
-    initFirebaseWhenReady();
+    const meat = meatData[selectedMeat];
+    const timeDiff = Math.abs(cookTime - meat.idealTime);
+    const tempDiff = Math.abs(internalTemp - meat.finishTemp);
     
-    // Initialize leaderboard listener
-    const unsubscribe = firebaseService.database.ref('leaderboard')
-      .orderByChild('score')
-      .limitToLast(20)
-      .on('value', (snapshot) => {
-        const data = snapshot.val() || [];
-        console.log('Leaderboard data received:', data);
-        const sortedData = Array.isArray(data) ? 
-          data.sort((a, b) => b.score - a.score) : 
-          Object.values(data).sort((a, b) => b.score - a.score);
-        setLeaderboard(sortedData);
-      });
-
-    return () => {
-      if (typeof unsubscribe === 'function') unsubscribe();
-    };
-  }, []);
+    const timeScore = Math.max(0, 100 - (timeDiff * 15));
+    const tempScore = Math.max(0, 100 - (tempDiff * 8));
+    const barkScore = Math.max(0, barkDevelopment - 20);
+    const moistureScore = Math.max(0, moistureLevel - 10);
+    const smokeScore = Math.max(0, smokeRingDepth - 15);
+    const collagenScore = selectedMeat === 'ribs' || selectedMeat === 'brisket' ? 
+                         Math.max(0, collagenBreakdown - 30) : 100;
+    
+    const regionBonus = regions[region].tempBonus || 0;
+    const weatherPenalty = weather === 'windy' ? 10 : weather === 'rainy' ? 5 : 0;
+    
+    const totalScore = Math.max(0, Math.min(100, 
+      (timeScore + tempScore + barkScore + moistureScore + smokeScore + collagenScore) / 6 
+      + regionBonus - weatherPenalty
+    ));
+    
+    return Math.round(totalScore);
+  };
 
   // Log player login for email notifications
   const logPlayerLogin = async (playerName, playerEmail) => {
@@ -251,10 +246,53 @@ const BBQMaster = () => {
       const result = await firebaseService.database.ref('leaderboard').push(scoreData);
       console.log('✅ Score saved successfully with key:', result.key);
       console.log('Score data:', scoreData);
+      setScoreSaved(true);
     } catch (error) {
       console.error('❌ Failed to save score:', error);
     }
   };
+
+  // Initialize Firebase and leaderboard
+  useEffect(() => {
+    // Wait for Firebase to load, then initialize
+    const initFirebaseWhenReady = () => {
+      if (typeof window !== 'undefined' && window.firebase) {
+        const firebaseReady = initializeFirebase();
+        console.log('Firebase ready:', firebaseReady);
+      } else {
+        console.log('Waiting for Firebase SDK to load...');
+        setTimeout(initFirebaseWhenReady, 1000);
+      }
+    };
+    
+    initFirebaseWhenReady();
+    
+    // Initialize leaderboard listener
+    const unsubscribe = firebaseService.database.ref('leaderboard')
+      .orderByChild('score')
+      .limitToLast(20)
+      .on('value', (snapshot) => {
+        const data = snapshot.val() || [];
+        console.log('Leaderboard data received:', data);
+        const sortedData = Array.isArray(data) ? 
+          data.sort((a, b) => b.score - a.score) : 
+          Object.values(data).sort((a, b) => b.score - a.score);
+        setLeaderboard(sortedData);
+      });
+
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, []);
+
+  // Handle score saving when results state changes
+  useEffect(() => {
+    if (gameState === 'results' && selectedMeat && playerName && !scoreSaved) {
+      const score = calculateScore();
+      console.log('Results screen loaded, saving score:', score);
+      saveScoreToLeaderboard(score);
+    }
+  }, [gameState, selectedMeat, playerName, scoreSaved, cookTime, barkDevelopment, moistureLevel, smokeRingDepth, collagenBreakdown, internalTemp]);
 
   // Main game loop
   useEffect(() => {
@@ -363,6 +401,7 @@ const BBQMaster = () => {
       setTemperature(meatData[selectedMeat].idealTemp);
       setInternalTemp(40);
       setCookTime(0);
+      setScoreSaved(false); // Reset score saved flag
     }
   };
 
@@ -419,32 +458,6 @@ const BBQMaster = () => {
     setActionTimer(3);
   };
 
-  const calculateScore = () => {
-    if (!selectedMeat) return 0;
-    
-    const meat = meatData[selectedMeat];
-    const timeDiff = Math.abs(cookTime - meat.idealTime);
-    const tempDiff = Math.abs(internalTemp - meat.finishTemp);
-    
-    const timeScore = Math.max(0, 100 - (timeDiff * 15));
-    const tempScore = Math.max(0, 100 - (tempDiff * 8));
-    const barkScore = Math.max(0, barkDevelopment - 20);
-    const moistureScore = Math.max(0, moistureLevel - 10);
-    const smokeScore = Math.max(0, smokeRingDepth - 15);
-    const collagenScore = selectedMeat === 'ribs' || selectedMeat === 'brisket' ? 
-                         Math.max(0, collagenBreakdown - 30) : 100;
-    
-    const regionBonus = regions[region].tempBonus || 0;
-    const weatherPenalty = weather === 'windy' ? 10 : weather === 'rainy' ? 5 : 0;
-    
-    const totalScore = Math.max(0, Math.min(100, 
-      (timeScore + tempScore + barkScore + moistureScore + smokeScore + collagenScore) / 6 
-      + regionBonus - weatherPenalty
-    ));
-    
-    return Math.round(totalScore);
-  };
-
   const resetGame = () => {
     setGameState('setup');
     setSelectedMeat(null);
@@ -473,6 +486,7 @@ const BBQMaster = () => {
     setTipTimer(0);
     setHourlyReports([]);
     setLastReportHour(0);
+    setScoreSaved(false);
   };
 
   // Entry Screen
@@ -942,15 +956,6 @@ const BBQMaster = () => {
     );
   }
 
-  // Handle score saving when results state changes
-  useEffect(() => {
-    if (gameState === 'results' && selectedMeat && playerName) {
-      const score = calculateScore();
-      console.log('Results screen loaded, saving score:', score);
-      saveScoreToLeaderboard(score);
-    }
-  }, [gameState, selectedMeat, playerName, cookTime, barkDevelopment, moistureLevel, smokeRingDepth, collagenBreakdown, internalTemp]);
-
   // Results Screen
   if (gameState === 'results') {
     const score = calculateScore();
@@ -967,7 +972,9 @@ const BBQMaster = () => {
               {grade === 'A+' ? '🏆' : grade === 'A' ? '🥇' : grade === 'B' ? '🥈' : grade === 'C' ? '🥉' : '📚'}
             </div>
             <div className="text-2xl font-semibold">Grade: {grade}</div>
-            <div className="text-sm opacity-70 mt-2">Score saved to global leaderboard!</div>
+            <div className="text-sm opacity-70 mt-2">
+              {scoreSaved ? 'Score saved to global leaderboard!' : 'Saving score...'}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
