@@ -471,8 +471,18 @@ const BBQMaster = () => {
 
   // Initialize Firebase and leaderboard
   useEffect(() => {
-    // Try to initialize Firebase
-    const firebaseReady = initializeFirebase();
+    // Wait for Firebase to load, then initialize
+    const initFirebaseWhenReady = () => {
+      if (typeof window !== 'undefined' && window.firebase) {
+        const firebaseReady = initializeFirebase();
+        console.log('Firebase ready:', firebaseReady);
+      } else {
+        console.log('Waiting for Firebase SDK to load...');
+        setTimeout(initFirebaseWhenReady, 1000);
+      }
+    };
+    
+    initFirebaseWhenReady();
     
     // Initialize leaderboard listener
     const unsubscribe = firebaseService.database.ref('leaderboard')
@@ -480,6 +490,7 @@ const BBQMaster = () => {
       .limitToLast(20)
       .on('value', (snapshot) => {
         const data = snapshot.val() || [];
+        console.log('Leaderboard data received:', data);
         const sortedData = Array.isArray(data) ? 
           data.sort((a, b) => b.score - a.score) : 
           Object.values(data).sort((a, b) => b.score - a.score);
@@ -494,23 +505,25 @@ const BBQMaster = () => {
   // Log player login for email notifications
   const logPlayerLogin = async (playerName, playerEmail) => {
     try {
+      console.log('Attempting to log player login:', playerName);
       await firebaseService.database.ref('player-logins').push({
         name: playerName,
         email: playerEmail || 'anonymous',
         timestamp: Date.now(),
         userAgent: navigator.userAgent,
-        location: 'Unknown' // Could add geolocation later
+        location: 'Unknown'
       });
-      console.log('Player login logged for:', playerName);
+      console.log('✅ Player login logged successfully for:', playerName);
     } catch (error) {
-      console.error('Failed to log player login:', error);
+      console.error('❌ Failed to log player login:', error);
     }
   };
 
   // Save score to leaderboard
   const saveScoreToLeaderboard = async (finalScore) => {
     try {
-      await firebaseService.database.ref('leaderboard').push({
+      console.log('Attempting to save score:', finalScore, 'for player:', playerName);
+      const scoreData = {
         name: playerName,
         email: playerEmail || 'anonymous', 
         score: finalScore,
@@ -524,10 +537,13 @@ const BBQMaster = () => {
         smokeScore: Math.round(smokeRingDepth),
         timestamp: Date.now(),
         date: new Date().toLocaleDateString()
-      });
-      console.log('Score saved to leaderboard:', finalScore);
+      };
+      
+      const result = await firebaseService.database.ref('leaderboard').push(scoreData);
+      console.log('✅ Score saved successfully with key:', result.key);
+      console.log('Score data:', scoreData);
     } catch (error) {
-      console.error('Failed to save score:', error);
+      console.error('❌ Failed to save score:', error);
     }
   };
   useEffect(() => {
