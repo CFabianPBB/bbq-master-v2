@@ -650,32 +650,50 @@ const BBQMaster = () => {
         const fuelConsumption = smokerType === 'electric' ? 0.2 : 0.5;
         setFuelLevel(prev => Math.max(0, prev - (fuelConsumption * weatherEffects[weather].fuelConsumption)));
 
-        // Temperature-based cooking progression
+        // Temperature-based cooking progression - FIXED for realistic cooking
         const tempDiff = Math.abs(temperature - meatData[selectedMeat].idealTemp);
-        const efficiency = Math.max(0.1, 1 - (tempDiff / 100));
+        const efficiency = Math.max(0.1, 1 - (tempDiff / 200)); // Less penalty for temp variance
         
-        // Internal temperature progression - Fixed and more realistic
+        // Base cooking rate - much faster
+        let baseRate = 3.0; // Base rate
+        
+        // Temperature multiplier - higher temps cook MUCH faster
+        if (temperature > meatData[selectedMeat].idealTemp + 50) {
+          baseRate *= 2.5; // Very hot = much faster cooking
+        } else if (temperature > meatData[selectedMeat].idealTemp + 25) {
+          baseRate *= 1.8; // Hot = faster cooking
+        } else if (temperature < meatData[selectedMeat].idealTemp - 50) {
+          baseRate *= 0.3; // Cold = much slower
+        }
+        
+        // Internal temperature progression - MUCH more realistic
         setInternalTemp(prev => {
-          let increase = 2.0 * efficiency; // Much faster progression
+          let increase = baseRate * efficiency;
           
-          // Stall simulation (between 150-170°F) - but less severe
-          if (prev >= 150 && prev <= 170 && !hasWrapped) {
+          // Stall simulation - but realistic based on temperature
+          if (prev >= 150 && prev <= 170 && !hasWrapped && temperature < 300) {
             if (!isStalled) {
               setIsStalled(true);
               setStallStartTime(cookTime);
             }
-            increase *= 0.3; // Less severe stall
-          } else if (isStalled && (hasWrapped || prev > 170)) {
+            // High heat powers through stall quickly
+            increase *= temperature > 275 ? 0.8 : 0.4;
+          } else if (isStalled && (hasWrapped || prev > 170 || temperature > 300)) {
             setIsStalled(false);
           }
           
           return Math.min(220, prev + increase);
         });
 
-        // Quality metrics
+        // Quality metrics - FIXED bark development
         setBarkDevelopment(prev => {
-          if (temperature >= 225 && temperature <= 275 && !hasWrapped && cookTime >= 1) {
-            const barkRate = 0.4 * efficiency;
+          if (temperature >= 200 && !hasWrapped && cookTime >= 0.5) {
+            // Higher temperatures = faster bark development
+            let barkRate = 0.8; // Base rate
+            if (temperature >= 300) barkRate = 2.0; // Very hot = fast bark
+            else if (temperature >= 275) barkRate = 1.5; // Hot = faster bark
+            else if (temperature >= 250) barkRate = 1.0; // Normal rate
+            
             const regionBonus = regions[region].barkBonus || 0;
             return Math.min(100, prev + barkRate + (regionBonus * 0.05));
           }
@@ -1650,10 +1668,17 @@ const BBQMaster = () => {
           </div>
 
           <div className="bg-gray-800 rounded-lg p-6">
+            <div className="mb-4 text-center">
+              <p className="text-lg">Found {leaderboard.length} BBQ Masters</p>
+              {leaderboard.length === 0 && (
+                <p className="text-sm opacity-70">Debug: Check console for leaderboard data</p>
+              )}
+            </div>
+
             {leaderboard.length === 0 ? (
               <div className="text-center py-12">
                 <Trophy size={64} className="mx-auto mb-4 opacity-50" />
-                <p className="text-xl opacity-80">No scores yet - be the first BBQ Master!</p>
+                <p className="text-xl opacity-80">Loading leaderboard...</p>
               </div>
             ) : (
               <div className="space-y-4">
