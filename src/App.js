@@ -942,18 +942,19 @@ const BBQMaster = () => {
     );
   }
 
+  // Handle score saving when results state changes
+  useEffect(() => {
+    if (gameState === 'results' && selectedMeat && playerName) {
+      const score = calculateScore();
+      console.log('Results screen loaded, saving score:', score);
+      saveScoreToLeaderboard(score);
+    }
+  }, [gameState, selectedMeat, playerName, cookTime, barkDevelopment, moistureLevel, smokeRingDepth, collagenBreakdown, internalTemp]);
+
   // Results Screen
   if (gameState === 'results') {
     const score = calculateScore();
     const grade = score >= 90 ? 'A+' : score >= 80 ? 'A' : score >= 70 ? 'B' : score >= 60 ? 'C' : 'D';
-    
-    // Save score immediately when results screen loads
-    useEffect(() => {
-      if (selectedMeat && playerName) {
-        console.log('Results screen loaded, saving score:', score);
-        saveScoreToLeaderboard(score);
-      }
-    }, [selectedMeat, playerName, score, cookTime, barkDevelopment, moistureLevel, smokeRingDepth, collagenBreakdown, internalTemp]);
     
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-900 to-blue-900 text-white p-8">
