@@ -1186,7 +1186,7 @@ const BBQMaster = () => {
                 className="w-5 h-5 text-orange-500" 
               />
               <label htmlFor="expertTips" className="text-sm font-semibold">
-                💡 Get coaching from BBQ legends
+                💡 Get coaching from BBQ legends like Myron Mixon, Nick Kittle, Harry Soo, Chris Fabian
               </label>
             </div>
           </div>
