@@ -470,30 +470,37 @@ const BBQMaster = () => {
     return report;
   };
 
-  // Calculate score function
+  // Calculate score function — rewards hitting the meat's ideal cooking time within a tolerance band.
   const calculateScore = () => {
     if (!selectedMeat) return 0;
-    
+
     const meat = meatData[selectedMeat];
+    // Time score: a generous tolerance band around idealTime (±15% is "perfect"), then steep falloff.
+    const timeBand = meat.idealTime * 0.15;
     const timeDiff = Math.abs(cookTime - meat.idealTime);
+    const timeScore = timeDiff <= timeBand
+      ? 100
+      : Math.max(0, 100 - ((timeDiff - timeBand) * 20));
+
+    // Internal temp accuracy at finish
     const tempDiff = Math.abs(internalTemp - meat.finishTemp);
-    
-    const timeScore = Math.max(0, 100 - (timeDiff * 15));
     const tempScore = Math.max(0, 100 - (tempDiff * 8));
-    const barkScore = Math.max(0, barkDevelopment - 20);
-    const moistureScore = Math.max(0, moistureLevel - 10);
-    const smokeScore = Math.max(0, smokeRingDepth - 15);
-    const collagenScore = selectedMeat === 'ribs' || selectedMeat === 'brisket' ? 
-                         Math.max(0, collagenBreakdown - 30) : 100;
-    
-    const regionBonus = regions[region].tempBonus || 0;
-    const weatherPenalty = weather === 'windy' ? 10 : weather === 'rainy' ? 5 : 0;
-    
-    const totalScore = Math.max(0, Math.min(100, 
-      (timeScore + tempScore + barkScore + moistureScore + smokeScore + collagenScore) / 6 
+
+    const barkScore = Math.max(0, barkDevelopment);
+    const moistureScore = moistureLevel;
+    const smokeScore = smokeRingDepth;
+    // Tough cuts depend on collagen breakdown; lean/quick cuts don't
+    const collagenMatters = selectedMeat === 'brisket' || selectedMeat === 'pork-shoulder' || selectedMeat === 'beef-ribs' || selectedMeat === 'ribs';
+    const collagenScore = collagenMatters ? collagenBreakdown : 100;
+
+    const regionBonus = (regions[region].tempBonus || 0) * 0.5;
+    const weatherPenalty = weather === 'windy' ? 8 : weather === 'rainy' ? 4 : weather === 'cold' ? 5 : 0;
+
+    const totalScore = Math.max(0, Math.min(100,
+      (timeScore + tempScore + barkScore + moistureScore + smokeScore + collagenScore) / 6
       + regionBonus - weatherPenalty
     ));
-    
+
     return Math.round(totalScore);
   };
 
@@ -626,67 +633,78 @@ const BBQMaster = () => {
           setLastReportHour(currentHour);
         }
         
-        // Temperature fluctuations based on weather and fuel
+        // Temperature fluctuations based on weather, fuel, water pan, and damper
         const weatherEffect = weatherEffects[weather];
         const baseVariance = weatherEffect.tempVariance;
         const smokerStability = smokerTypes[smokerType].tempStability;
         const fuelEffect = fuelLevel < 20 ? 0.5 : 1.0;
-        
+        // Water pan dampens swings significantly via thermal mass
+        const waterPanStability = waterPanActive ? 0.5 : 1.0;
+
         // Electric smokers are much more stable
         const tempChangeMultiplier = smokerType === 'electric' ? 0.3 : 1.0;
-        const tempChange = (Math.random() - 0.5) * baseVariance * 10 * fuelEffect * tempChangeMultiplier * (1 - smokerStability);
-        
+        const tempChange = (Math.random() - 0.5) * baseVariance * 10 * fuelEffect * tempChangeMultiplier * waterPanStability * (1 - smokerStability);
+
         setTemperature(prev => {
           let newTemp = prev + tempChange;
-          
+
+          // Damper position drives airflow and is the primary heat lever on non-electric pits.
+          // Mid-range (~50%) is neutral; open dampers feed oxygen and push temp up, closed dampers starve the fire.
+          if (smokerType !== 'electric') {
+            const damperDrift = ((damperPosition - 50) / 50) * 1.2; // ±1.2°F per tick at the extremes
+            newTemp += damperDrift;
+          }
+
           // Weather-specific effects (reduced for electric)
-          if (weather === 'cold') newTemp -= smokerType === 'electric' ? 1 : 2;
-          if (weather === 'windy' && smokerType !== 'electric') newTemp += Math.random() * 8 - 4;
-          
+          if (weather === 'cold') newTemp -= smokerType === 'electric' ? 1 : 3;
+          if (weather === 'windy' && smokerType !== 'electric') newTemp += Math.random() * 12 - 6;
+          if (weather === 'rainy' && smokerType !== 'electric') newTemp -= 1;
+
           return Math.max(100, Math.min(400, newTemp));
         });
 
-        // Fuel consumption
-        const fuelConsumption = smokerType === 'electric' ? 0.2 : 0.5;
-        setFuelLevel(prev => Math.max(0, prev - (fuelConsumption * weatherEffects[weather].fuelConsumption)));
+        // Fuel consumption — damper position and weather both matter
+        const baseFuelBurn = smokerType === 'electric' ? 0.2 : 0.5;
+        const damperFuelMultiplier = smokerType === 'electric' ? 1 : (0.5 + (damperPosition / 100) * 1.2); // 0.5x closed → 1.7x wide open
+        setFuelLevel(prev => Math.max(0, prev - (baseFuelBurn * weatherEffects[weather].fuelConsumption * damperFuelMultiplier)));
 
-        // Temperature-based cooking progression - FIXED with meat-specific rates
-        const tempDiff = Math.abs(temperature - meatData[selectedMeat].idealTemp);
-        const efficiency = Math.max(0.1, 1 - (tempDiff / 200));
-        
-        // Meat-specific base cooking rates
+        // Temperature-based cooking progression — calibrated so each meat reaches finishTemp
+        // near its idealTime when cooked at idealTemp. With cookTime advancing 1/60 per second
+        // (1 sec = 1 game minute), the per-tick degree gain ≈ (finishTemp - 40) / (idealTime * 60).
+        const meatRef = meatData[selectedMeat];
+        const tempDiff = Math.abs(temperature - meatRef.idealTemp);
+        const efficiency = Math.max(0.1, 1 - (tempDiff / 150)); // sharper falloff away from target
+
+        // Per-meat baseline rate so internal temp tracks the meat's cooking-time profile.
+        // Numbers nudged slightly upward to leave headroom for the stall slowdown.
         let baseRate;
         switch(selectedMeat) {
-          case 'brisket':
-            baseRate = 1.2; // Slow cooking for tough brisket
-            break;
-          case 'pork-shoulder':
-            baseRate = 1.0; // Slow for tough pork shoulder
-            break;
-          case 'beef-ribs':
-            baseRate = 1.5; // Medium-slow for beef ribs
-            break;
-          case 'ribs':
-            baseRate = 3.0; // Faster for baby back ribs
-            break;
-          case 'burnt-ends':
-            baseRate = 2.0; // Medium for burnt ends
-            break;
-          case 'salmon':
-            baseRate = 8.0; // Very fast for delicate fish
-            break;
-          default:
-            baseRate = 2.0;
+          case 'brisket':       baseRate = 0.32; break; // ~12h target (low & slow, tough connective tissue)
+          case 'pork-shoulder': baseRate = 0.26; break; // ~14h target
+          case 'beef-ribs':     baseRate = 0.38; break; // ~10h target
+          case 'burnt-ends':    baseRate = 0.42; break; // ~8h target (cubed point, faster)
+          case 'ribs':          baseRate = 0.55; break; // ~6h target (3-2-1 style)
+          case 'salmon':        baseRate = 1.10; break; // ~2h target (delicate, fast)
+          default:              baseRate = 0.40;
         }
-        
-        // Temperature multiplier - higher temps cook faster but differently per meat
-        if (temperature > meatData[selectedMeat].idealTemp + 50) {
-          baseRate *= selectedMeat === 'brisket' ? 1.8 : 2.5; // Brisket less responsive to high heat
-        } else if (temperature > meatData[selectedMeat].idealTemp + 25) {
-          baseRate *= selectedMeat === 'brisket' ? 1.4 : 1.8;
-        } else if (temperature < meatData[selectedMeat].idealTemp - 50) {
-          baseRate *= 0.3;
+
+        // Temperature multiplier — high heat speeds the cook but punishes quality elsewhere.
+        // Tough cuts (brisket/pork shoulder/beef ribs) are less responsive to brute force.
+        const toughCut = selectedMeat === 'brisket' || selectedMeat === 'pork-shoulder' || selectedMeat === 'beef-ribs';
+        if (temperature > meatRef.idealTemp + 75) {
+          baseRate *= toughCut ? 1.7 : 2.4;
+        } else if (temperature > meatRef.idealTemp + 40) {
+          baseRate *= toughCut ? 1.35 : 1.7;
+        } else if (temperature > meatRef.idealTemp + 15) {
+          baseRate *= 1.15;
+        } else if (temperature < meatRef.idealTemp - 50) {
+          baseRate *= 0.25;
+        } else if (temperature < meatRef.idealTemp - 25) {
+          baseRate *= 0.6;
         }
+
+        // Wrapping accelerates the cook past the stall (Texas crutch effect).
+        if (hasWrapped) baseRate *= wrapType === 'foil' ? 1.45 : 1.2;
         
         // Internal temperature progression - realistic per meat type
         setInternalTemp(prev => {
@@ -709,45 +727,75 @@ const BBQMaster = () => {
           return Math.min(220, prev + increase);
         });
 
-        // Quality metrics - FIXED bark development
+        // Bark — surface Maillard reaction. Needs heat, dry surface, and time uncovered.
+        // Rate calibrated so a clean cook reaches ~80-100% bark by the meat's ideal time.
         setBarkDevelopment(prev => {
           if (temperature >= 200 && !hasWrapped && cookTime >= 0.5) {
-            // Higher temperatures = faster bark development
-            let barkRate = 0.8; // Base rate
-            if (temperature >= 300) barkRate = 2.0; // Very hot = fast bark
-            else if (temperature >= 275) barkRate = 1.5; // Hot = faster bark
-            else if (temperature >= 250) barkRate = 1.0; // Normal rate
-            
+            // Bark forms ~12% per cooking hour at target temp; scaled per game minute = 0.20.
+            let barkRate = 0.20;
+            if (temperature >= 300) barkRate = 0.45;
+            else if (temperature >= 275) barkRate = 0.32;
+            else if (temperature >= 250) barkRate = 0.25;
+            else if (temperature < 225) barkRate = 0.12;
+
+            // Water pan creates a steamy environment that suppresses bark formation.
+            if (waterPanActive) barkRate *= 0.65;
+            // High moisture surface (just spritzed) briefly slows bark.
+            if (moistureLevel > 90) barkRate *= 0.8;
+
             const regionBonus = regions[region].barkBonus || 0;
-            return Math.min(100, prev + barkRate + (regionBonus * 0.05));
+            return Math.min(100, prev + barkRate + (regionBonus * 0.01));
           }
-          if (hasWrapped && wrapType === 'foil') return Math.max(0, prev - 0.2);
+          if (hasWrapped && wrapType === 'foil') return Math.max(0, prev - 0.05);
           return prev;
         });
 
+        // Collagen — converts to gelatin between 160-205°F internal. This is what makes tough cuts tender.
         setCollagenBreakdown(prev => {
           if (internalTemp >= 160 && temperature >= 200) {
-            const rate = (internalTemp - 160) * 0.08;
+            // ~0.04 per °F over 160, capped — slower so it tracks the longer cook.
+            const rate = Math.min(2.5, (internalTemp - 160) * 0.025);
             return Math.min(100, prev + rate);
           }
           return prev;
         });
 
+        // Smoke ring — locks in below 140°F internal. Wood chips are NOT optional; without them
+        // there is no smoke ring at all. Each chip addition is worth a meaningful chunk.
         setSmokeRingDepth(prev => {
-          if (internalTemp < 140 && woodChipsAdded > 0 && temperature >= 200) {
-            const rate = 0.4 * (woodChipsAdded / 12);
+          if (internalTemp < 140 && woodChipsAdded > 0 && temperature >= 180) {
+            // Per-chip leverage: 0.18 * chips. At 6 chips that's >1% per game minute under 140°F.
+            let rate = 0.18 * woodChipsAdded;
+            // Water pan boosts smoke ring (humidity helps NO bind to myoglobin).
+            if (waterPanActive) rate *= 1.3;
+            // Electric smokers produce less smoke even with chips.
+            if (smokerType === 'electric') rate *= 0.7;
             return Math.min(100, prev + rate);
           }
           return prev;
         });
 
+        // Moisture — high heat dries it out, water/spritz/wrap counteract.
         setMoistureLevel(prev => {
           let moisture = prev;
-          if (temperature > 275) moisture -= 0.8;
-          if (waterPanActive) moisture += 0.3;
-          if (spritzeCount > 0 && cookTime >= 2) moisture += 0.2;
-          if (hasWrapped && wrapType === 'foil') moisture += 0.4;
-          if (hasWrapped && wrapType === 'paper') moisture += 0.1;
+          // Heat-driven moisture loss (more aggressive at higher temps)
+          if (temperature > 300) moisture -= 1.2;
+          else if (temperature > 275) moisture -= 0.7;
+          else if (temperature > 250) moisture -= 0.35;
+          else if (temperature > 225) moisture -= 0.18;
+          else moisture -= 0.08;
+
+          // Wind dries the surface
+          if (weather === 'windy') moisture -= 0.15;
+
+          // Counteractions
+          if (waterPanActive) moisture += 0.6;
+          if (spritzeCount > 0 && cookTime >= 0.5) moisture += 0.05 * Math.min(spritzeCount, 5);
+          if (hasWrapped && wrapType === 'foil') moisture += 0.8;
+          if (hasWrapped && wrapType === 'paper') moisture += 0.25;
+          // Region bonus
+          moisture += (regions[region].moistureBonus || 0) * 0.005;
+
           return Math.max(0, Math.min(100, moisture));
         });
 
@@ -782,7 +830,7 @@ const BBQMaster = () => {
     const meatDoneness = Math.min(1, internalTemp / meatData[selectedMeat].finishTemp);
     
     return (
-      <div className="bg-gray-900 rounded-lg p-4 h-64 relative overflow-hidden border-4 border-gray-700">
+      <div className="bg-gray-900 rounded-lg p-2 sm:p-4 h-48 sm:h-64 relative overflow-hidden border-2 sm:border-4 border-gray-700">
         <div className="absolute inset-0 bg-gradient-to-b from-gray-800 to-gray-900"></div>
         
         {/* Enhanced Smoke wisps - way more smoke! */}
@@ -835,9 +883,9 @@ const BBQMaster = () => {
         </div>
 
         {/* MASSIVE Meat visualization - 5x bigger! */}
-        <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2">
-          <div 
-            className="w-48 h-32 rounded-xl border-4 transition-all duration-1000 relative overflow-hidden"
+        <div className="absolute bottom-14 sm:bottom-20 left-1/2 transform -translate-x-1/2">
+          <div
+            className="w-32 h-20 sm:w-48 sm:h-32 rounded-xl border-2 sm:border-4 transition-all duration-1000 relative overflow-hidden"
             style={{
               backgroundColor: `rgb(${Math.max(139, barkColor)}, ${Math.max(69, barkColor * 0.5)}, ${Math.max(19, barkColor * 0.2)})`,
               borderColor: hasWrapped ? (wrapType === 'foil' ? '#C0C0C0' : '#8B4513') : '#4A4A4A',
@@ -866,7 +914,7 @@ const BBQMaster = () => {
             
             {/* Giant meat emoji in center */}
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-6xl opacity-90">
+              <span className="text-4xl sm:text-6xl opacity-90">
                 {meatData[selectedMeat].emoji}
               </span>
             </div>
@@ -975,10 +1023,13 @@ const BBQMaster = () => {
   };
 
   const sprayMeat = () => {
-    if (spritzeCount < 5 && cookTime >= 0.05) {
+    if (spritzeCount < 8 && cookTime >= 0.05) {
       setSpritzeCount(prev => prev + 1);
-      setBarkDevelopment(prev => Math.min(100, prev + 8));
-      setMoistureLevel(prev => Math.min(100, prev + 15));
+      // Spritz cools the surface, adds moisture, and helps bark stick (small bump only — bark grows from sustained heat)
+      setBarkDevelopment(prev => Math.min(100, prev + 3));
+      setMoistureLevel(prev => Math.min(100, prev + 12));
+      // Brief surface cooldown
+      setTemperature(prev => Math.max(100, prev - 4));
       setCurrentAction('spritzing');
       setActionTimer(3);
     }
@@ -987,9 +1038,10 @@ const BBQMaster = () => {
   const addWoodChips = () => {
     if (woodChipsAdded < 12 && fuelLevel > 10) {
       setWoodChipsAdded(prev => prev + 1);
-      setFuelLevel(prev => prev - 5);
-      setSmokeRingDepth(prev => Math.min(100, prev + 6));
-      setFlavorComplex(prev => Math.min(100, prev + 4));
+      setFuelLevel(prev => prev - 4);
+      // Each chip is a real flavor event — meaningful smoke ring + flavor bump
+      setSmokeRingDepth(prev => Math.min(100, prev + (internalTemp < 140 ? 8 : 2)));
+      setFlavorComplex(prev => Math.min(100, prev + 6));
       setCurrentAction('adding wood chips');
       setActionTimer(4);
     }
@@ -1061,24 +1113,21 @@ const BBQMaster = () => {
   // Leaderboard Screen - MOVED TO TOP PRIORITY
   if (showLeaderboard) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 to-indigo-900 text-white p-8">
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 to-indigo-900 text-white p-3 sm:p-8">
         <div className="max-w-6xl mx-auto">
-          <div className="flex justify-between items-center mb-8">
-            <h1 className="text-4xl font-bold">🏆 Global BBQ Leaderboard</h1>
-            <button 
+          <div className="flex justify-between items-center mb-4 sm:mb-8 gap-3">
+            <h1 className="text-xl sm:text-3xl md:text-4xl font-bold">🏆 BBQ Leaderboard</h1>
+            <button
               onClick={() => setShowLeaderboard(false)}
-              className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-lg transition-colors"
+              className="bg-gray-600 hover:bg-gray-700 px-3 py-2 rounded-lg transition-colors text-sm shrink-0"
             >
               ✕ Close
             </button>
           </div>
 
-          <div className="bg-gray-800 rounded-lg p-6">
-            <div className="mb-4 text-center">
-              <p className="text-lg">Found {leaderboard.length} BBQ Masters</p>
-              {leaderboard.length === 0 && (
-                <p className="text-sm opacity-70">Debug: Check console for leaderboard data</p>
-              )}
+          <div className="bg-gray-800 rounded-lg p-3 sm:p-6">
+            <div className="mb-3 sm:mb-4 text-center">
+              <p className="text-base sm:text-lg">Found {leaderboard.length} BBQ Masters</p>
             </div>
 
             {leaderboard.length === 0 ? (
@@ -1087,8 +1136,9 @@ const BBQMaster = () => {
                 <p className="text-xl opacity-80">Loading leaderboard...</p>
               </div>
             ) : (
-              <div className="space-y-4">
-                <div className="grid grid-cols-6 gap-4 text-sm font-semibold text-gray-300 border-b border-gray-600 pb-2">
+              <div className="space-y-2 sm:space-y-4">
+                {/* Desktop header row only */}
+                <div className="hidden sm:grid grid-cols-6 gap-4 text-sm font-semibold text-gray-300 border-b border-gray-600 pb-2">
                   <div>Rank</div>
                   <div>Pitmaster</div>
                   <div>Score</div>
@@ -1096,32 +1146,56 @@ const BBQMaster = () => {
                   <div>Region</div>
                   <div>Date</div>
                 </div>
-                
+
                 {leaderboard.map((entry, index) => (
-                  <div 
-                    key={entry.id || index} 
-                    className={`grid grid-cols-6 gap-4 py-3 px-4 rounded-lg transition-colors ${
+                  <div
+                    key={entry.id || index}
+                    className={`rounded-lg transition-colors ${
                       index < 3 ? 'bg-yellow-900 bg-opacity-30 border border-yellow-600' : 'bg-gray-700'
                     } hover:bg-gray-600`}
                   >
-                    <div className="flex items-center">
-                      <span className="text-xl mr-2">
-                        {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
-                      </span>
+                    {/* Mobile: stacked card */}
+                    <div className="sm:hidden p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center min-w-0">
+                          <span className="text-xl mr-2 shrink-0">
+                            {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
+                          </span>
+                          <span className="font-semibold truncate">{entry.name}</span>
+                          {entry.name === playerName && (
+                            <span className="ml-2 text-xs bg-blue-600 px-1.5 py-0.5 rounded shrink-0">YOU</span>
+                          )}
+                        </div>
+                        <div className="text-xl font-bold text-orange-400 shrink-0 ml-2">{entry.score}</div>
+                      </div>
+                      <div className="flex items-center justify-between text-xs opacity-80">
+                        <span>{meatData[entry.meat]?.emoji} {meatData[entry.meat]?.name}</span>
+                        <span>{regions[entry.region]?.name}</span>
+                        <span className="text-gray-400">{entry.date}</span>
+                      </div>
                     </div>
-                    <div className="font-semibold">
-                      {entry.name}
-                      {entry.name === playerName && (
-                        <span className="ml-2 text-xs bg-blue-600 px-2 py-1 rounded">YOU</span>
-                      )}
+
+                    {/* Desktop: row */}
+                    <div className="hidden sm:grid grid-cols-6 gap-4 py-3 px-4">
+                      <div className="flex items-center">
+                        <span className="text-xl mr-2">
+                          {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
+                        </span>
+                      </div>
+                      <div className="font-semibold">
+                        {entry.name}
+                        {entry.name === playerName && (
+                          <span className="ml-2 text-xs bg-blue-600 px-2 py-1 rounded">YOU</span>
+                        )}
+                      </div>
+                      <div className="text-xl font-bold text-orange-400">{entry.score}</div>
+                      <div className="flex items-center">
+                        <span className="mr-1">{meatData[entry.meat]?.emoji}</span>
+                        <span className="text-sm">{meatData[entry.meat]?.name}</span>
+                      </div>
+                      <div className="text-sm">{regions[entry.region]?.name}</div>
+                      <div className="text-sm text-gray-400">{entry.date}</div>
                     </div>
-                    <div className="text-xl font-bold text-orange-400">{entry.score}</div>
-                    <div className="flex items-center">
-                      <span className="mr-1">{meatData[entry.meat]?.emoji}</span>
-                      <span className="text-sm">{meatData[entry.meat]?.name}</span>
-                    </div>
-                    <div className="text-sm">{regions[entry.region]?.name}</div>
-                    <div className="text-sm text-gray-400">{entry.date}</div>
                   </div>
                 ))}
               </div>
@@ -1135,32 +1209,32 @@ const BBQMaster = () => {
   // Entry Screen
   if (gameState === 'entry') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-900 via-red-900 to-black text-white p-8 relative overflow-hidden">
+      <div className="min-h-screen bg-gradient-to-br from-orange-900 via-red-900 to-black text-white p-4 sm:p-8 relative overflow-hidden">
         <div className="max-w-2xl mx-auto text-center relative z-10">
-          <div className="mb-8 relative">
-            <div className="text-8xl mb-4 relative">
+          <div className="mb-6 sm:mb-8 relative">
+            <div className="text-5xl sm:text-8xl mb-3 sm:mb-4 relative">
               <div className="inline-block animate-pulse">
                 <span className="text-orange-500 animate-bounce" style={{ animationDuration: '0.8s' }}>🔥</span>
                 <span className="text-red-500 animate-bounce mx-2" style={{ animationDuration: '1.1s', animationDelay: '0.2s' }}>🔥</span>
                 <span className="text-yellow-500 animate-bounce" style={{ animationDuration: '0.9s', animationDelay: '0.4s' }}>🔥</span>
               </div>
             </div>
-            
-            <h1 className="text-6xl font-bold mb-4 bg-gradient-to-r from-orange-400 via-red-500 to-yellow-400 bg-clip-text text-transparent animate-pulse">
+
+            <h1 className="text-4xl sm:text-6xl font-bold mb-3 sm:mb-4 bg-gradient-to-r from-orange-400 via-red-500 to-yellow-400 bg-clip-text text-transparent animate-pulse">
               BBQ MASTER
             </h1>
-            
-            <div className="mb-6 relative">
-              <div className="text-6xl mb-2">🏭</div>
-              <div className="text-lg opacity-90 bg-black bg-opacity-50 rounded-lg p-4 backdrop-blur-sm">
+
+            <div className="mb-4 sm:mb-6 relative">
+              <div className="text-4xl sm:text-6xl mb-2">🏭</div>
+              <div className="text-base sm:text-lg opacity-90 bg-black bg-opacity-50 rounded-lg p-3 sm:p-4 backdrop-blur-sm">
                 🌟 Championship Pitmaster Simulator 🌟
                 <br />
-                <span className="text-sm opacity-80">Master the art of low & slow cooking</span>
+                <span className="text-xs sm:text-sm opacity-80">Master the art of low & slow cooking</span>
               </div>
             </div>
           </div>
-          
-          <div className="space-y-4 mb-8 bg-black bg-opacity-40 p-8 rounded-xl backdrop-blur-sm border border-orange-500 border-opacity-30">
+
+          <div className="space-y-3 sm:space-y-4 mb-6 sm:mb-8 bg-black bg-opacity-40 p-4 sm:p-8 rounded-xl backdrop-blur-sm border border-orange-500 border-opacity-30">
             <input
               type="text"
               placeholder="Enter your pitmaster name"
@@ -1194,9 +1268,9 @@ const BBQMaster = () => {
           <button
             onClick={startGame}
             disabled={!playerName.trim()}
-            className={`w-full py-6 px-8 rounded-xl text-2xl font-bold transition-all transform hover:scale-105 relative overflow-hidden ${
-              playerName.trim() 
-                ? 'bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 shadow-2xl shadow-orange-500/50' 
+            className={`w-full py-4 sm:py-6 px-4 sm:px-8 rounded-xl text-lg sm:text-2xl font-bold transition-all transform hover:scale-105 relative overflow-hidden ${
+              playerName.trim()
+                ? 'bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 shadow-2xl shadow-orange-500/50'
                 : 'bg-gray-600 cursor-not-allowed'
             }`}
           >
@@ -1205,7 +1279,7 @@ const BBQMaster = () => {
 
           <button
             onClick={() => setShowLeaderboard(true)}
-            className="w-full mt-4 py-3 px-8 rounded-xl text-lg font-bold bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 transition-all transform hover:scale-105"
+            className="w-full mt-3 sm:mt-4 py-3 px-4 sm:px-8 rounded-xl text-base sm:text-lg font-bold bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 transition-all transform hover:scale-105"
           >
             🏆 View Global Leaderboard 🏆
           </button>
@@ -1217,59 +1291,59 @@ const BBQMaster = () => {
   // Setup Screen
   if (gameState === 'setup') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-900 to-red-900 text-white p-8">
+      <div className="min-h-screen bg-gradient-to-br from-orange-900 to-red-900 text-white p-3 sm:p-8">
         <div className="max-w-4xl mx-auto">
-          <h1 className="text-3xl font-bold text-center mb-8">🔥 Welcome {playerName}! Set Up Your Cook</h1>
-          
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <h1 className="text-xl sm:text-3xl font-bold text-center mb-4 sm:mb-8 leading-tight">🔥 Welcome {playerName}! Set Up Your Cook</h1>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8">
             <div>
-              <h2 className="text-2xl font-semibold mb-4">🥩 Choose Your Cut</h2>
-              <div className="grid grid-cols-2 gap-4">
+              <h2 className="text-lg sm:text-2xl font-semibold mb-2 sm:mb-4">🥩 Choose Your Cut</h2>
+              <div className="grid grid-cols-2 gap-2 sm:gap-4">
                 {Object.entries(meatData).map(([key, meat]) => (
                   <button
                     key={key}
                     onClick={() => setSelectedMeat(key)}
-                    className={`p-4 rounded-lg border-2 transition-all ${
-                      selectedMeat === key 
-                        ? 'border-orange-400 bg-orange-800' 
+                    className={`p-2 sm:p-4 rounded-lg border-2 transition-all ${
+                      selectedMeat === key
+                        ? 'border-orange-400 bg-orange-800'
                         : 'border-gray-600 bg-gray-800 hover:bg-gray-700'
                     }`}
                   >
-                    <div className="text-3xl mb-2">{meat.emoji}</div>
-                    <div className="font-semibold">{meat.name}</div>
-                    <div className="text-sm opacity-80">{meat.difficulty}</div>
-                    <div className="text-xs opacity-60">${meat.price}</div>
+                    <div className="text-2xl sm:text-3xl mb-1 sm:mb-2">{meat.emoji}</div>
+                    <div className="font-semibold text-sm sm:text-base">{meat.name}</div>
+                    <div className="text-xs sm:text-sm opacity-80">{meat.difficulty}</div>
+                    <div className="text-xs opacity-60">{meat.idealTime}h • ${meat.price}</div>
                   </button>
                 ))}
               </div>
             </div>
 
             <div>
-              <h2 className="text-2xl font-semibold mb-4">🏭 Choose Your Smoker</h2>
-              <div className="grid grid-cols-2 gap-4">
+              <h2 className="text-lg sm:text-2xl font-semibold mb-2 sm:mb-4">🏭 Choose Your Smoker</h2>
+              <div className="grid grid-cols-2 gap-2 sm:gap-4">
                 {Object.entries(smokerTypes).map(([key, smoker]) => (
                   <button
                     key={key}
                     onClick={() => setSmokerType(key)}
-                    className={`p-4 rounded-lg border-2 transition-all ${
-                      smokerType === key 
-                        ? 'border-orange-400 bg-orange-800' 
+                    className={`p-2 sm:p-4 rounded-lg border-2 transition-all ${
+                      smokerType === key
+                        ? 'border-orange-400 bg-orange-800'
                         : 'border-gray-600 bg-gray-800 hover:bg-gray-700'
                     }`}
                   >
-                    <div className="text-3xl mb-2">{smoker.emoji}</div>
-                    <div className="font-semibold">{smoker.name}</div>
-                    <div className="text-sm opacity-80">{smoker.difficulty}</div>
+                    <div className="text-2xl sm:text-3xl mb-1 sm:mb-2">{smoker.emoji}</div>
+                    <div className="font-semibold text-sm sm:text-base">{smoker.name}</div>
+                    <div className="text-xs sm:text-sm opacity-80">{smoker.difficulty}</div>
                   </button>
                 ))}
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-6 mt-4 sm:mt-8">
             <div>
               <label className="block text-sm font-semibold mb-2">🌡️ Weather Challenge</label>
-              <select value={weather} onChange={(e) => setWeather(e.target.value)} 
+              <select value={weather} onChange={(e) => setWeather(e.target.value)}
                       className="w-full p-3 rounded-lg bg-gray-700 text-white">
                 {Object.entries(weatherEffects).map(([key, w]) => (
                   <option key={key} value={key}>{w.emoji} {w.name}</option>
@@ -1279,7 +1353,7 @@ const BBQMaster = () => {
 
             <div>
               <label className="block text-sm font-semibold mb-2">🗺️ BBQ Region</label>
-              <select value={region} onChange={(e) => setRegion(e.target.value)} 
+              <select value={region} onChange={(e) => setRegion(e.target.value)}
                       className="w-full p-3 rounded-lg bg-gray-700 text-white">
                 {Object.entries(regions).map(([key, r]) => (
                   <option key={key} value={key}>{r.name} - {r.style}</option>
@@ -1295,13 +1369,13 @@ const BBQMaster = () => {
             </div>
           </div>
 
-          <div className="text-center mt-8">
+          <div className="text-center mt-6 sm:mt-8">
             <button
               onClick={beginCooking}
               disabled={!selectedMeat || !smokerType}
-              className={`py-4 px-12 rounded-lg text-xl font-bold transition-colors ${
-                selectedMeat && smokerType 
-                  ? 'bg-orange-600 hover:bg-orange-700' 
+              className={`w-full sm:w-auto py-3 sm:py-4 px-6 sm:px-12 rounded-lg text-lg sm:text-xl font-bold transition-colors ${
+                selectedMeat && smokerType
+                  ? 'bg-orange-600 hover:bg-orange-700'
                   : 'bg-gray-600 cursor-not-allowed'
               }`}
             >
@@ -1321,52 +1395,54 @@ const BBQMaster = () => {
     const tempProgress = Math.min(100, (internalTemp / meat.finishTemp) * 100);
 
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black text-white p-4">
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black text-white p-2 sm:p-4">
         <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-6">
-            <h1 className="text-3xl font-bold">
+          <div className="text-center mb-3 sm:mb-6">
+            <h1 className="text-lg sm:text-2xl md:text-3xl font-bold leading-tight">
               {meat.emoji} Smoking {meat.name} - {playerName}
             </h1>
-            <div className="text-sm opacity-80 mt-1">
-              {smokerTypes[smokerType].emoji} {smokerTypes[smokerType].name} | 
-              {weatherEffects[weather].emoji} {weatherEffects[weather].name} | 
-              {regions[region].name} Style
+            <div className="text-xs sm:text-sm opacity-80 mt-1 flex flex-wrap justify-center gap-x-2">
+              <span>{smokerTypes[smokerType].emoji} {smokerTypes[smokerType].name}</span>
+              <span className="opacity-60">|</span>
+              <span>{weatherEffects[weather].emoji} {weatherEffects[weather].name}</span>
+              <span className="opacity-60">|</span>
+              <span>{regions[region].name}</span>
             </div>
           </div>
 
           {/* Expert Tip Display */}
           {currentTip && (
-            <div className="bg-blue-900 border border-blue-600 rounded-lg p-3 mb-4 mx-auto max-w-2xl">
-              <div className="flex items-center justify-between">
-                <div className="text-sm">{currentTip}</div>
-                <div className="text-xs opacity-70">{tipTimer}s</div>
+            <div className="bg-blue-900 border border-blue-600 rounded-lg p-2 sm:p-3 mb-3 sm:mb-4 mx-auto max-w-2xl">
+              <div className="flex items-start justify-between gap-2">
+                <div className="text-xs sm:text-sm">{currentTip}</div>
+                <div className="text-xs opacity-70 shrink-0">{tipTimer}s</div>
               </div>
             </div>
           )}
 
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-6">
             {/* Main Controls */}
-            <div className="xl:col-span-2 space-y-6">
+            <div className="xl:col-span-2 space-y-3 sm:space-y-6">
               {/* Temperature Control */}
-              <div className="bg-gray-800 rounded-lg p-6">
-                <h3 className="text-xl font-semibold mb-4 flex items-center">
-                  <Thermometer className="mr-2" size={24} />
+              <div className="bg-gray-800 rounded-lg p-3 sm:p-6">
+                <h3 className="text-base sm:text-xl font-semibold mb-3 sm:mb-4 flex items-center">
+                  <Thermometer className="mr-2" size={20} />
                   Temperature Control
                 </h3>
-                
-                <div className="grid grid-cols-2 gap-6">
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                   <div>
-                    <label className="block text-sm mb-2">Smoker Temperature</label>
-                    <div className="flex items-center space-x-4">
+                    <label className="block text-xs sm:text-sm mb-2">Smoker Temperature</label>
+                    <div className="flex items-center space-x-3 sm:space-x-4">
                       <input
                         type="range"
                         min="150"
                         max="350"
                         value={temperature}
                         onChange={(e) => setTemperature(parseInt(e.target.value))}
-                        className="flex-1"
+                        className="flex-1 min-w-0"
                       />
-                      <span className="text-2xl font-bold w-20 text-center">
+                      <span className="text-lg sm:text-2xl font-bold w-16 sm:w-20 text-center shrink-0">
                         {Math.round(temperature)}°F
                       </span>
                     </div>
@@ -1376,12 +1452,12 @@ const BBQMaster = () => {
                   </div>
 
                   <div>
-                    <label className="block text-sm mb-2">Internal Temperature</label>
-                    <div className="text-2xl font-bold text-center p-3 bg-gray-700 rounded">
+                    <label className="block text-xs sm:text-sm mb-2">Internal Temperature</label>
+                    <div className="text-lg sm:text-2xl font-bold text-center p-2 sm:p-3 bg-gray-700 rounded">
                       {Math.round(internalTemp)}°F
                     </div>
                     <div className="w-full bg-gray-600 rounded-full h-2 mt-2">
-                      <div 
+                      <div
                         className="bg-orange-500 h-2 rounded-full transition-all duration-500"
                         style={{ width: `${tempProgress}%` }}
                       />
@@ -1394,53 +1470,53 @@ const BBQMaster = () => {
               </div>
 
               {/* Smoker Interior Animation */}
-              <div className="bg-gray-800 rounded-lg p-6">
-                <h3 className="text-xl font-semibold mb-4">🔥 Inside the Smoker</h3>
+              <div className="bg-gray-800 rounded-lg p-3 sm:p-6">
+                <h3 className="text-base sm:text-xl font-semibold mb-3 sm:mb-4">🔥 Inside the Smoker</h3>
                 <SmokerInterior />
               </div>
 
               {/* Controls */}
-              <div className="bg-gray-800 rounded-lg p-6">
-                <h4 className="font-semibold mb-4">🎯 Techniques & Controls</h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="bg-gray-800 rounded-lg p-3 sm:p-6">
+                <h4 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">🎯 Techniques & Controls</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3">
                   <button
                     onClick={sprayMeat}
-                    disabled={spritzeCount >= 5 || cookTime < 0.05}
-                    className={`p-3 rounded text-sm font-semibold ${
+                    disabled={spritzeCount >= 8 || cookTime < 0.05}
+                    className={`p-2 sm:p-3 rounded text-xs sm:text-sm font-semibold ${
                       cookTime >= 0.05 ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-600 cursor-not-allowed'
                     }`}
                   >
-                    💦 Spritz ({spritzeCount}/5)
+                    💦 Spritz ({spritzeCount}/8)
                   </button>
                   
                   <button
                     onClick={addWoodChips}
                     disabled={woodChipsAdded >= 12 || fuelLevel <= 10}
-                    className={`p-3 rounded text-sm font-semibold ${
+                    className={`p-2 sm:p-3 rounded text-xs sm:text-sm font-semibold ${
                       fuelLevel > 10 ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 cursor-not-allowed'
                     }`}
                   >
                     🪵 Wood ({woodChipsAdded}/12)
                   </button>
-                  
+
                   <button
                     onClick={() => wrapMeat('paper')}
                     disabled={internalTemp < meat.wrapTemp || hasWrapped}
-                    className={`p-3 rounded text-sm font-semibold ${
-                      internalTemp >= meat.wrapTemp && !hasWrapped 
-                        ? 'bg-yellow-600 hover:bg-yellow-700' 
+                    className={`p-2 sm:p-3 rounded text-xs sm:text-sm font-semibold ${
+                      internalTemp >= meat.wrapTemp && !hasWrapped
+                        ? 'bg-yellow-600 hover:bg-yellow-700'
                         : 'bg-gray-600 cursor-not-allowed'
                     }`}
                   >
                     📦 Butcher Paper
                   </button>
-                  
+
                   <button
                     onClick={() => wrapMeat('foil')}
                     disabled={internalTemp < meat.wrapTemp || hasWrapped}
-                    className={`p-3 rounded text-sm font-semibold ${
-                      internalTemp >= meat.wrapTemp && !hasWrapped 
-                        ? 'bg-purple-600 hover:bg-purple-700' 
+                    className={`p-2 sm:p-3 rounded text-xs sm:text-sm font-semibold ${
+                      internalTemp >= meat.wrapTemp && !hasWrapped
+                        ? 'bg-purple-600 hover:bg-purple-700'
                         : 'bg-gray-600 cursor-not-allowed'
                     }`}
                   >
@@ -1450,7 +1526,7 @@ const BBQMaster = () => {
                   <button
                     onClick={addFuel}
                     disabled={fuelLevel >= 80}
-                    className={`p-3 rounded text-sm font-semibold ${
+                    className={`p-2 sm:p-3 rounded text-xs sm:text-sm font-semibold ${
                       fuelLevel < 80 ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-600 cursor-not-allowed'
                     }`}
                   >
@@ -1459,12 +1535,12 @@ const BBQMaster = () => {
 
                   <button
                     onClick={toggleWaterPan}
-                    className="p-3 rounded text-sm font-semibold bg-cyan-600 hover:bg-cyan-700"
+                    className="p-2 sm:p-3 rounded text-xs sm:text-sm font-semibold bg-cyan-600 hover:bg-cyan-700"
                   >
-                    💧 Water Pan {waterPanActive ? 'ON' : 'OFF'}
+                    💧 Water {waterPanActive ? 'ON' : 'OFF'}
                   </button>
 
-                  <div className="col-span-2">
+                  <div className="col-span-2 md:col-span-2">
                     <label className="block text-xs mb-1">Damper Position</label>
                     <input
                       type="range"
@@ -1481,11 +1557,11 @@ const BBQMaster = () => {
             </div>
 
             {/* Status Panel */}
-            <div className="space-y-6">
+            <div className="space-y-3 sm:space-y-6">
               {/* Timer and Progress */}
-              <div className="bg-gray-800 rounded-lg p-6">
-                <h3 className="text-xl font-semibold mb-4 flex items-center">
-                  <Timer className="mr-2" size={24} />
+              <div className="bg-gray-800 rounded-lg p-3 sm:p-6">
+                <h3 className="text-base sm:text-xl font-semibold mb-3 sm:mb-4 flex items-center">
+                  <Timer className="mr-2" size={20} />
                   Cook Status
                 </h3>
                 
@@ -1535,8 +1611,8 @@ const BBQMaster = () => {
               </div>
 
               {/* Quality Metrics */}
-              <div className="bg-gray-800 rounded-lg p-6">
-                <h3 className="text-xl font-semibold mb-4">🧬 Live Science</h3>
+              <div className="bg-gray-800 rounded-lg p-3 sm:p-6">
+                <h3 className="text-base sm:text-xl font-semibold mb-3 sm:mb-4">🧬 Live Science</h3>
                 
                 <div className="space-y-3">
                   <div>
@@ -1600,8 +1676,8 @@ const BBQMaster = () => {
               </div>
 
               {/* Hourly Report Card */}
-              <div className="bg-gray-800 rounded-lg p-6">
-                <h3 className="text-xl font-semibold mb-4">📊 Hourly Report Card</h3>
+              <div className="bg-gray-800 rounded-lg p-3 sm:p-6">
+                <h3 className="text-base sm:text-xl font-semibold mb-3 sm:mb-4">📊 Hourly Report Card</h3>
                 
                 {hourlyReports.length === 0 ? (
                   <div className="text-center text-gray-400 py-8">
@@ -1689,58 +1765,58 @@ const BBQMaster = () => {
     const grade = score >= 90 ? 'A+' : score >= 80 ? 'A' : score >= 70 ? 'B' : score >= 60 ? 'C' : 'D';
     
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 to-blue-900 text-white p-8">
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 to-blue-900 text-white p-3 sm:p-8">
         <div className="max-w-4xl mx-auto text-center">
-          <h1 className="text-4xl font-bold mb-8">🏆 Cook Complete!</h1>
-          
-          <div className="bg-gray-800 rounded-lg p-8 mb-8">
-            <h2 className="text-3xl font-bold mb-4">Final Score: {score}/100</h2>
-            <div className="text-6xl mb-4">
+          <h1 className="text-2xl sm:text-4xl font-bold mb-4 sm:mb-8">🏆 Cook Complete!</h1>
+
+          <div className="bg-gray-800 rounded-lg p-4 sm:p-8 mb-4 sm:mb-8">
+            <h2 className="text-xl sm:text-3xl font-bold mb-2 sm:mb-4">Final Score: {score}/100</h2>
+            <div className="text-4xl sm:text-6xl mb-3 sm:mb-4">
               {grade === 'A+' ? '🏆' : grade === 'A' ? '🥇' : grade === 'B' ? '🥈' : grade === 'C' ? '🥉' : '📚'}
             </div>
-            <div className="text-2xl font-semibold">Grade: {grade}</div>
-            <div className="text-sm opacity-70 mt-2">
+            <div className="text-xl sm:text-2xl font-semibold">Grade: {grade}</div>
+            <div className="text-xs sm:text-sm opacity-70 mt-2">
               {scoreSaved ? 'Score saved to global leaderboard!' : 'Saving score...'}
             </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-            <div className="bg-gray-800 rounded-lg p-4">
-              <div className="text-lg font-semibold">Bark Quality</div>
-              <div className="text-2xl">{Math.round(barkDevelopment)}%</div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-4 mb-4 sm:mb-8">
+            <div className="bg-gray-800 rounded-lg p-3 sm:p-4">
+              <div className="text-sm sm:text-lg font-semibold">Bark Quality</div>
+              <div className="text-xl sm:text-2xl">{Math.round(barkDevelopment)}%</div>
             </div>
-            <div className="bg-gray-800 rounded-lg p-4">
-              <div className="text-lg font-semibold">Moisture</div>
-              <div className="text-2xl">{Math.round(moistureLevel)}%</div>
+            <div className="bg-gray-800 rounded-lg p-3 sm:p-4">
+              <div className="text-sm sm:text-lg font-semibold">Moisture</div>
+              <div className="text-xl sm:text-2xl">{Math.round(moistureLevel)}%</div>
             </div>
-            <div className="bg-gray-800 rounded-lg p-4">
-              <div className="text-lg font-semibold">Smoke Ring</div>
-              <div className="text-2xl">{Math.round(smokeRingDepth)}%</div>
+            <div className="bg-gray-800 rounded-lg p-3 sm:p-4">
+              <div className="text-sm sm:text-lg font-semibold">Smoke Ring</div>
+              <div className="text-xl sm:text-2xl">{Math.round(smokeRingDepth)}%</div>
             </div>
-            <div className="bg-gray-800 rounded-lg p-4">
-              <div className="text-lg font-semibold">Tenderness</div>
-              <div className="text-2xl">{Math.round(collagenBreakdown)}%</div>
+            <div className="bg-gray-800 rounded-lg p-3 sm:p-4">
+              <div className="text-sm sm:text-lg font-semibold">Tenderness</div>
+              <div className="text-xl sm:text-2xl">{Math.round(collagenBreakdown)}%</div>
             </div>
-            <div className="bg-gray-800 rounded-lg p-4">
-              <div className="text-lg font-semibold">Cook Time</div>
-              <div className="text-2xl">{Math.floor(cookTime)}h {Math.floor((cookTime % 1) * 60)}m</div>
+            <div className="bg-gray-800 rounded-lg p-3 sm:p-4">
+              <div className="text-sm sm:text-lg font-semibold">Cook Time</div>
+              <div className="text-xl sm:text-2xl">{Math.floor(cookTime)}h {Math.floor((cookTime % 1) * 60)}m</div>
             </div>
-            <div className="bg-gray-800 rounded-lg p-4">
-              <div className="text-lg font-semibold">Techniques</div>
-              <div className="text-2xl">{spritzeCount + (hasWrapped ? 1 : 0) + woodChipsAdded}</div>
+            <div className="bg-gray-800 rounded-lg p-3 sm:p-4">
+              <div className="text-sm sm:text-lg font-semibold">Techniques</div>
+              <div className="text-xl sm:text-2xl">{spritzeCount + (hasWrapped ? 1 : 0) + woodChipsAdded}</div>
             </div>
           </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
             <button
               onClick={resetGame}
-              className="bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 px-8 rounded-lg text-xl transition-colors"
+              className="bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 px-6 sm:px-8 rounded-lg text-base sm:text-xl transition-colors"
             >
               🔥 Cook Another Cut
             </button>
             <button
               onClick={() => setShowLeaderboard(true)}
-              className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-8 rounded-lg text-xl transition-colors"
+              className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 sm:px-8 rounded-lg text-base sm:text-xl transition-colors"
             >
               🏆 View Leaderboard
             </button>
